@@ -1,0 +1,16 @@
+{
+  "name": "clipping-app",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "bundle:ffmpeg": "node scripts/bundle-ffmpeg.mjs",
+    "dev": "npm --workspace apps/desktop run dev",
+    "build": "npm --workspace apps/desktop run build",
+    "typecheck": "npm --workspace apps/desktop run typecheck",
+    "test:engine": "node scripts/run-engine-tests.mjs"
+  }
+}

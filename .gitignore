@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+release/
+
+# Python
+engine/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data when running the engine standalone
+.data/
+
+# Bundled binaries are copied in by scripts/bundle-ffmpeg.mjs, not committed
+bin/*
+!bin/.gitkeep
