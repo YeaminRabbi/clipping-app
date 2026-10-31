@@ -146,6 +146,10 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
     """,
+    # Per-clip editing options, e.g. {"tighten": {"remove_fillers": true, "remove_pauses": true, "max_pause_ms": 500}}.
+    """
+    ALTER TABLE clips ADD COLUMN edit_json TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 

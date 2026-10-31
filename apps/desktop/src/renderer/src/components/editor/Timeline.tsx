@@ -19,6 +19,8 @@ interface Props {
   range: Range | null
   currentMs: number
   playing: boolean
+  /** Parts Tighten removes from the selected clip (source ms). */
+  cuts?: { start: number; end: number; reason: string }[]
   onSeek(ms: number): void
   onRangeChange(range: Range, final: boolean): void
   onSelect(id: number | null): void
@@ -356,6 +358,22 @@ export function Timeline(props: Props) {
               {handle('end', range.end)}
             </>
           )}
+
+          {/* Parts removed by Tighten */}
+          {(props.cuts ?? []).map((c) => (
+            <div
+              key={c.start}
+              title={c.reason === 'filler' ? 'Filler word removed' : 'Pause shortened'}
+              className="pointer-events-none absolute z-10 border-x border-red-400/60"
+              style={{
+                left: xFor(c.start),
+                width: Math.max(2, xFor(c.end) - xFor(c.start)),
+                top: RULER_H + THUMBS_H,
+                height: WAVE_H + CLIPS_H,
+                background: 'repeating-linear-gradient(135deg, rgba(248,113,113,0.45) 0 4px, rgba(0,0,0,0.35) 4px 8px)'
+              }}
+            />
+          ))}
 
           {/* Playhead */}
           <div className="pointer-events-none absolute top-0 z-30 w-px bg-white" style={{ left: xFor(currentMs), height: TOTAL_H }}>

@@ -96,12 +96,40 @@ export interface FitStyle {
 
 export const DEFAULT_FIT: FitStyle = { background: 'blur', dim: 0.25, zoom: 1, position: 'center' }
 
+export type FollowMode = 'speaker' | 'largest'
+
+export interface SmartOptions {
+  face_ratio?: number // share of the clip where a face was found
+  follow?: FollowMode // what was asked for
+  followed?: FollowMode // what was done: "speaker" needs two or more people on screen
+  speakers?: number
+  switches?: number // camera cuts between speakers
+}
+
+export interface Tighten {
+  remove_fillers: boolean
+  remove_pauses: boolean
+  max_pause_ms: number
+}
+
+export const DEFAULT_TIGHTEN: Tighten = { remove_fillers: true, remove_pauses: true, max_pause_ms: 500 }
+
+export interface CutPlan {
+  status: 'off' | 'needs_transcript' | 'ready'
+  segments?: [number, number][]
+  cuts?: { start: number; end: number; reason: 'filler' | 'pause' }[]
+  fillers?: number
+  pauses?: number
+  duration_ms?: number
+  removed_ms?: number
+}
+
 export interface ClipFormat {
   id: number
   mode: FramingMode
   crop: Crop | null
-  /** Fit: the style. Smart: `face_ratio`, the share of the clip where a face was found. */
-  options: Partial<FitStyle> & { face_ratio?: number }
+  /** Fit: the style. Smart: tracking results (see SmartOptions). */
+  options: Partial<FitStyle> & SmartOptions
   /** Smart only: the tracked path, and whether the clip now extends past it. */
   keyframes?: Keyframe[]
   stale?: boolean
@@ -116,6 +144,8 @@ export interface Clip {
   status: 'suggested' | 'kept' | 'rejected'
   score: number | null
   reasons: string[]
+  /** Remove filler words and long pauses (null = off). */
+  tighten: Tighten | null
   sort_order: number
   formats: Record<string, ClipFormat>
 }
@@ -224,6 +254,8 @@ export interface ExportPreset {
   default_framing: 'smart' | 'center' | 'fit'
   captions: 'off' | 'burn' | 'burn_srt' | 'srt'
   zip: boolean
+  /** Tighten clips that don't have their own setting. */
+  tighten_all: boolean
   output_dir: string
   name_template: string
 }
@@ -329,12 +361,20 @@ export class EngineClient {
     return this.request(`/sources/${sourceId}/clips`, { method: 'POST', body: JSON.stringify(body) })
   }
 
-  updateClip(id: number, body: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'status'>>): Promise<Clip> {
+  updateClip(id: number, body: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'status' | 'tighten'>>): Promise<Clip> {
     return this.request(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
   }
 
-  setClipFormat(id: number, aspect: string, body: { mode: FramingMode; crop?: Crop | null; fit?: FitStyle }): Promise<Clip> {
+  setClipFormat(
+    id: number,
+    aspect: string,
+    body: { mode: FramingMode; crop?: Crop | null; fit?: FitStyle; follow?: FollowMode }
+  ): Promise<Clip> {
     return this.request(`/clips/${id}/formats/${aspect.replace(':', 'x')}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  getCutPlan(clipId: number): Promise<CutPlan> {
+    return this.request(`/clips/${clipId}/cut-plan`)
   }
 
   deleteClip(id: number): Promise<void> {

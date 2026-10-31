@@ -99,6 +99,19 @@ def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool) -> np.
     return db
 
 
+def cached_loudness(ffmpeg: str, proxy: Path, work_dir: Path, duration_ms: int, has_audio: bool) -> np.ndarray:
+    """loudness(), saved as loudness.npy next to the proxy after the first time."""
+    path = work_dir / "loudness.npy"
+    if path.is_file():
+        try:
+            return np.load(path)
+        except (OSError, ValueError):
+            pass
+    levels = loudness(ffmpeg, proxy, duration_ms, has_audio)
+    np.save(path, levels)
+    return levels
+
+
 def silence_threshold(db: np.ndarray) -> float:
     """Adapts to the recording's noise floor: a bit above its quietest moments, within sane limits."""
     if len(db) == 0:

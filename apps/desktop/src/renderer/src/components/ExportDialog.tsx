@@ -18,6 +18,7 @@ const DEFAULTS: SavedPreset = {
   default_framing: 'smart',
   captions: 'off',
   zip: false,
+  tighten_all: false,
   name_template: DEFAULT_TEMPLATE
 }
 
@@ -266,6 +267,19 @@ export function ExportDialog() {
                 className="accent-[#7c5cff]"
               />
               Also bundle everything into one ZIP file
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={preset.tighten_all}
+                onChange={(e) => setPreset({ ...preset, tighten_all: e.target.checked })}
+                className="mt-1 accent-[#7c5cff]"
+              />
+              <span>
+                Tighten every clip: remove “um”/“uh” and shorten long pauses
+                <span className="block text-[11px] text-muted">Clips with their own Tighten setting in the editor keep it.</span>
+              </span>
             </label>
 
             <label className="flex cursor-pointer items-center gap-2 text-sm">

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,17 @@ from .. import sources
 from ..config import Settings
 from .cues import Cue, make_cues, words_for_clip
 from .styles import DEFAULT_TEMPLATE, CaptionStyle, resolve
+
+
+_locks: dict[int, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def transcript_lock(source_id: int) -> threading.Lock:
+    """One transcription of a source at a time: exports of several sizes, and auto clipping, all need
+    the same transcript, so later ones wait for the first and reuse it instead of redoing the work."""
+    with _locks_guard:
+        return _locks.setdefault(source_id, threading.Lock())
 
 
 def transcript_path(settings: Settings, project_id: int, source_id: int) -> Path:
@@ -20,9 +32,20 @@ def load_transcript(settings: Settings, project_id: int, source_id: int) -> dict
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError:
         return None
+    from ..analysis.transcribe import TRANSCRIPT_VERSION
+
+    return data if data.get("version", 1) >= TRANSCRIPT_VERSION else None
+
+
+def save_transcript(settings: Settings, source: Any, data: dict[str, Any]) -> None:
+    """Write transcript.json atomically."""
+    path = transcript_path(settings, source["project_id"], source["id"])
+    tmp = path.with_suffix(".partial")
+    tmp.write_text(json.dumps(data), encoding="utf-8")
+    tmp.replace(path)
 
 
 def ensure_transcript(settings: Settings, source: Any, cancel) -> dict[str, Any]:
@@ -30,20 +53,18 @@ def ensure_transcript(settings: Settings, source: Any, cancel) -> dict[str, Any]
     from .. import ffmpeg
     from ..analysis.transcribe import DEFAULT_MODEL, transcribe
 
-    existing = load_transcript(settings, source["project_id"], source["id"])
-    if existing is not None:
-        return existing
-    if not source["has_audio"]:
-        return {"model": DEFAULT_MODEL, "language": None, "words": []}
-    tools = ffmpeg.detect(settings.bin_dir)
-    data = transcribe(
-        tools.ffmpeg.path, Path(source["proxy_path"]), source["duration_ms"], settings.models_path, DEFAULT_MODEL, None, cancel
-    )
-    path = transcript_path(settings, source["project_id"], source["id"])
-    tmp = path.with_suffix(".partial")
-    tmp.write_text(json.dumps(data), encoding="utf-8")
-    tmp.replace(path)
-    return data
+    with transcript_lock(source["id"]):
+        existing = load_transcript(settings, source["project_id"], source["id"])  # may have just been made
+        if existing is not None:
+            return existing
+        if not source["has_audio"]:
+            return {"model": DEFAULT_MODEL, "language": None, "words": []}
+        tools = ffmpeg.detect(settings.bin_dir)
+        data = transcribe(
+            tools.ffmpeg.path, Path(source["proxy_path"]), source["duration_ms"], settings.models_path, DEFAULT_MODEL, None, cancel
+        )
+        save_transcript(settings, source, data)
+        return data
 
 
 def project_style(conn: sqlite3.Connection, project_id: int) -> tuple[str, dict[str, Any]]:
@@ -87,4 +108,19 @@ def clip_cues(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[
     words, edited = clip_words(conn, settings, clip)
     if words is None:
         return None, False, style
+    words = _without_cut_words(conn, settings, clip, words)
     return make_cues(words, style, end_limit=clip["end_ms"]), edited, style
+
+
+def _without_cut_words(conn: sqlite3.Connection, settings: Settings, clip: Any, words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """When the clip is tightened, drop words that fall in removed parts (fillers), as the export does."""
+    from ..edit.service import plan_for_clip, tighten_settings  # edit.service imports this module
+
+    tighten = tighten_settings(clip)
+    if tighten is None:
+        return words
+    source = conn.execute("SELECT * FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
+    plan = plan_for_clip(settings, clip, source, tighten)
+    if plan is None:
+        return words
+    return [w for w in words if not any(c.start <= (w["start"] + w["end"]) / 2 < c.end for c in plan.cuts)]

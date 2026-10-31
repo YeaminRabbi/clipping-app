@@ -88,6 +88,20 @@ def test_snap_never_cuts_into_words_and_prefers_nearby_scene_cuts():
             assert last["end"] <= c.end <= words[cand.last_word + 1]["start"]
 
 
+def test_snap_with_touching_words_never_cuts_the_clips_own_words():
+    # Whisper often gives back-to-back timings: "week." ends exactly when "It" starts.
+    words = [
+        {"start": 1000, "end": 1400, "text": "Left"},
+        {"start": 1400, "end": 1880, "text": "week."},
+        {"start": 1880, "end": 2300, "text": "It"},
+    ]
+    cand = Candidate(start=1000, end=1880, first_word=0, last_word=1)
+    snapped = snap(cand, words, [], [], 10_000)
+    assert snapped.end == 1880, "end sits on the boundary, not 20 ms inside 'week.'"
+    cand = Candidate(start=1880, end=2300, first_word=2, last_word=2)
+    assert snap(cand, words, [], [], 10_000).start == 1880
+
+
 def test_keywords_hooks_and_weak_starts_affect_ranking():
     words = make_words(SCRIPT)
     sig = signals_for(words)

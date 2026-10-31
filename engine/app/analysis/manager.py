@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import clips, ffmpeg, sources
+from ..captions.service import save_transcript, transcript_lock
 from ..config import Settings
 from ..db import Database
 from ..events import EventHub
@@ -184,6 +185,11 @@ class AnalysisManager:
                 del self.tokens[source_id]
 
     def _transcript(self, source_id, src, proxy: Path, work_dir: Path, params, token) -> list[dict]:
+        # An export that needs captions may be transcribing this video right now; wait and reuse it.
+        with transcript_lock(source_id):
+            return self._transcript_locked(source_id, src, proxy, work_dir, params, token)
+
+    def _transcript_locked(self, source_id, src, proxy: Path, work_dir: Path, params, token) -> list[dict]:
         path = work_dir / "transcript.json"
         model, language = params.get("model", "base"), params.get("language")
         cached = load_cached(path, model, language)
@@ -206,9 +212,7 @@ class AnalysisManager:
         data = transcribe(
             tools.ffmpeg.path, proxy, src["duration_ms"], self.settings.models_path, model, language, token, on_progress
         )
-        tmp = path.with_suffix(".partial")
-        tmp.write_text(json.dumps(data), encoding="utf-8")
-        tmp.replace(path)
+        save_transcript(self.settings, src, data)
         return data["words"]
 
     def _scene_cuts(self, source_id, proxy: Path, work_dir: Path, duration: int, token, start: float, span: float) -> list[int]:

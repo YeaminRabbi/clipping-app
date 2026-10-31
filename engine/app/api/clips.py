@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from .. import clips, exports, sources
 from ..aspects import ASPECTS
 from ..media import CancelToken
+from ..edit.service import plan_for_clip, tighten_settings
 from ..reframe.service import track_clip
 
 router = APIRouter(tags=["clips"])
@@ -20,11 +21,19 @@ class ClipCreate(BaseModel):
     title: str | None = Field(default=None, max_length=200)
 
 
+class Tighten(BaseModel):
+    remove_fillers: bool = True
+    remove_pauses: bool = True
+    max_pause_ms: int = Field(default=500, ge=150, le=3000)
+
+
 class ClipUpdate(BaseModel):
     start_ms: int | None = Field(default=None, ge=0)
     end_ms: int | None = Field(default=None, gt=0)
     title: str | None = Field(default=None, max_length=200)
     status: Literal["suggested", "kept", "rejected"] | None = None
+    # Remove filler words and long pauses. Send null to turn it off; leave it out to keep it as is.
+    tighten: Tighten | None = None
 
 
 class Crop(BaseModel):
@@ -45,6 +54,8 @@ class FormatUpdate(BaseModel):
     """manual: a fixed crop. smart: follow faces (tracking runs now). fit: whole frame, styled by `fit`."""
 
     mode: Literal["manual", "fit", "smart"]
+    # Smart only: follow whoever is talking (falls back to the biggest face when one person is on screen).
+    follow: Literal["speaker", "largest"] = "speaker"
     crop: Crop | None = None
     fit: FitStyle | None = None
 
@@ -120,13 +131,33 @@ def update_clip(clip_id: int, body: ClipUpdate, request: Request) -> dict[str, A
         title = clip["title"] if body.title is None else (body.title.strip() or clip["title"])
         # Editing a suggested clip means the user wants it: re-running auto clipping won't remove it.
         status = body.status or ("kept" if clip["status"] == "suggested" else clip["status"])
+        edit = json.loads(conn.execute("SELECT edit_json FROM clips WHERE id = ?", (clip_id,)).fetchone()[0] or "{}")
+        if "tighten" in body.model_fields_set:
+            edit["tighten"] = body.tighten.model_dump() if body.tighten else None
         conn.execute(
-            "UPDATE clips SET start_ms = ?, end_ms = ?, title = ?, status = ? WHERE id = ?",
-            (start, end, title, status, clip_id),
+            "UPDATE clips SET start_ms = ?, end_ms = ?, title = ?, status = ?, edit_json = ? WHERE id = ?",
+            (start, end, title, status, json.dumps(edit), clip_id),
         )
         clip = clips.get(conn, clip_id)
     _publish(request, "clip", clip)
     return clip
+
+
+@router.get("/clips/{clip_id}/cut-plan")
+def cut_plan(clip_id: int, request: Request) -> dict[str, Any]:
+    """What Tighten removes from the clip, for the editor to show and skip during playback."""
+    with request.app.state.db.connect() as conn:
+        clip = conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
+        if clip is None:
+            raise HTTPException(404, "Clip not found")
+        source = conn.execute("SELECT * FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
+    tighten = tighten_settings(clip)
+    if tighten is None:
+        return {"status": "off"}
+    plan = plan_for_clip(request.app.state.settings, clip, source, tighten)
+    if plan is None:
+        return {"status": "needs_transcript"}
+    return {"status": "ready", **plan.to_dict(clip["end_ms"] - clip["start_ms"])}
 
 
 @router.put("/clips/{clip_id}/formats/{aspect_key}")
@@ -148,9 +179,9 @@ def set_format(clip_id: int, aspect_key: str, body: FormatUpdate, request: Reque
         # Tracking takes a few seconds; FastAPI runs this sync route in a worker thread.
         work_dir = sources.source_dir(request.app.state.settings, source["project_id"], source["id"])
         result = track_clip(
-            request.app.state.settings, source, work_dir, clip["start_ms"], clip["end_ms"], aspect, CancelToken()
+            request.app.state.settings, source, work_dir, clip["start_ms"], clip["end_ms"], aspect, CancelToken(), body.follow
         )
-        keyframes, options = result.keyframes, {"face_ratio": result.face_ratio}
+        keyframes, options = result.keyframes, result.options(body.follow)
 
     with request.app.state.db.connect() as conn:
         conn.execute(

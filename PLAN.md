@@ -166,7 +166,8 @@ clipping-app/
 | 4. Smart reframe ✅ | Face tracking, smoothing, fit-with-blur | 1–2 wk |
 | 5. Optional captions ✅ | Caption toggle, editor, templates, burn-in + SRT | 1–2 wk |
 | 6. Polish & ship ✅ | Replace clip, HW encoding, naming templates, ZIP, installer, auto-update | 1–2 wk |
-| Later | Code signing, active-speaker framing, in-app yt-dlp updates, optional AI scoring, filler-word removal, batch sources, macOS, direct publishing | — |
+| 7. Podcast polish ✅ | Active-speaker framing (cuts to whoever is talking), Tighten (remove um/uh and shorten long pauses) | 1 wk |
+| Later | Code signing, in-app yt-dlp updates, optional AI scoring, hook titles / logo overlays, brand presets, batch sources, macOS, direct publishing | — |
 
 ## Risks
 

@@ -16,11 +16,14 @@ from typing import Any
 from . import clips, ffmpeg, sources
 from .aspects import crop_path, crop_pixels, default_crop, output_size
 from .captions.ass import build_ass
-from .captions.cues import to_srt
-from .captions.service import clip_cues, ensure_transcript
+from .captions.cues import make_cues, to_srt
+from .captions.service import clip_cues, clip_words, ensure_transcript
 from .captions.styles import font_file
 from .config import Settings
 from .db import Database
+from .edit.cutplan import TightenSettings
+from .edit.service import plan_for_clip, tighten_settings
+from .edit.timemap import TimeMap
 from .events import EventHub
 from .media import CancelToken, Cancelled, MediaError
 from .media.probe import probe
@@ -34,6 +37,7 @@ from .media.render import (
     trim_window,
 )
 from .reframe.service import keyframes_cover, track_clip
+from .reframe.track import crop_at
 
 log = logging.getLogger("engine.exports")
 
@@ -180,11 +184,12 @@ class ExportManager:
         with self.db.connect() as conn:
             src = conn.execute("SELECT * FROM sources WHERE id = ?", (row["source_id"],)).fetchone()
         work_dir = sources.source_dir(self.settings, src["project_id"], src["id"])
-        result = track_clip(self.settings, src, work_dir, row["start_ms"], row["end_ms"], row["aspect"], token)
+        follow = json.loads(row["options_json"] or "{}").get("follow", "speaker")
+        result = track_clip(self.settings, src, work_dir, row["start_ms"], row["end_ms"], row["aspect"], token, follow)
         with self.db.connect() as conn:
             conn.execute(
                 "UPDATE clip_formats SET crop_keyframes_json = ?, options_json = ? WHERE id = ?",
-                (json.dumps(result.keyframes), json.dumps({"face_ratio": result.face_ratio}), row["format_id"]),
+                (json.dumps(result.keyframes), json.dumps(result.options(follow)), row["format_id"]),
             )
             clip_id = conn.execute("SELECT clip_id FROM clip_formats WHERE id = ?", (row["format_id"],)).fetchone()[0]
             clip = clips.get(conn, clip_id)
@@ -229,14 +234,20 @@ class ExportManager:
 
             out_w, out_h = output_size(row["aspect"], int(preset["resolution"]))
             output_fps = info.fps_rational if preset["fps"] == "source" else str(preset["fps"])
+            # Tighten: cut filler words and long pauses, then play the kept parts back to back.
+            timemap = self._cut_plan(row, preset, token)
             keyframes = json.loads(row["crop_keyframes_json"])
             crop_px, path = None, None
             if row["mode"] == "smart":
                 if not keyframes_cover(keyframes, row["start_ms"], row["end_ms"]):
                     # Never tracked, or the clip was extended past the tracked part: track now.
                     keyframes = self._track(row, token)
-                seek, _ = trim_window(row["start_ms"], row["end_ms"], info.fps_rational)
-                path = crop_path(keyframes, row["aspect"], info.width, info.height, seek)
+                if timemap:
+                    # The joined segments start at output time 0, so the re-timed path needs no seek offset.
+                    path = crop_path(timemap.map_keyframes(keyframes, crop_at), row["aspect"], info.width, info.height, 0.0)
+                else:
+                    seek, _ = trim_window(row["start_ms"], row["end_ms"], info.fps_rational)
+                    path = crop_path(keyframes, row["aspect"], info.width, info.height, seek)
             elif row["mode"] != "fit":
                 crop = keyframes[0] if keyframes else default_crop(row["aspect"], info.width, info.height)
                 crop_px = crop_pixels(crop, row["aspect"], info.width, info.height)
@@ -247,15 +258,16 @@ class ExportManager:
             dest = unique_path(folder, row["output_name"])
             self._update(job_id, output_path=str(dest))
 
-            cues, style = (None, None)
+            cues, style, caption_offset = None, None, row["start_ms"]
             if row["burn_captions"] or row["export_srt"]:
-                cues, style = self._captions(row, token)
+                cues, style = self._captions(row, token, timemap)
+                caption_offset = 0 if timemap else row["start_ms"]
             if row["burn_captions"] and cues:
                 # libass reads the subtitles and font by relative name from a private folder, which
                 # avoids escaping Windows paths inside the filter graph.
                 caption_dir = Path(tempfile.mkdtemp(prefix="clipping-captions-"))
                 (caption_dir / "captions.ass").write_text(
-                    build_ass(cues, style, out_w, out_h, row["start_ms"]), encoding="utf-8"
+                    build_ass(cues, style, out_w, out_h, caption_offset), encoding="utf-8"
                 )
                 overlay = "subtitles=filename=captions.ass"
                 if font := font_file(style.font):
@@ -293,6 +305,7 @@ class ExportManager:
                     quality=preset["quality"],
                     cancel=token,
                     on_progress=on_progress,
+                    segments=timemap.segments if timemap else None,
                 )
 
             try:
@@ -311,7 +324,7 @@ class ExportManager:
 
             if row["export_srt"] and cues:
                 srt = dest.with_suffix(".srt")
-                srt.write_text(to_srt(cues, style, row["start_ms"]), encoding="utf-8")
+                srt.write_text(to_srt(cues, style, caption_offset), encoding="utf-8")
                 self._update(job_id, srt_path=str(srt))
             self._update(job_id, status="done", progress=1, error=None)
         except Cancelled:
@@ -326,8 +339,24 @@ class ExportManager:
             if row["batch_id"]:
                 self._finish_batch(row["batch_id"])
 
-    def _captions(self, row, token: CancelToken):
-        """Cues and style for a job's clip, transcribing the source first if it never was."""
+    def _cut_plan(self, row, preset: dict, token: CancelToken) -> TimeMap | None:
+        """The kept segments when the clip is tightened (its own setting, or "tighten all" on export)."""
+        with self.db.connect() as conn:
+            clip = conn.execute("SELECT * FROM clips WHERE id = ?", (row["clip_id"],)).fetchone()
+            src = conn.execute("SELECT * FROM sources WHERE id = ?", (row["source_id"],)).fetchone()
+        tighten = tighten_settings(clip)
+        if tighten is None and preset.get("tighten_all"):
+            tighten = TightenSettings()
+        if tighten is None:
+            return None
+        plan = plan_for_clip(self.settings, clip, src, tighten, token, transcribe_if_needed=True)
+        return TimeMap(plan.segments) if plan and len(plan.segments) > 1 else None
+
+    def _captions(self, row, token: CancelToken, timemap: TimeMap | None = None):
+        """Cues and style for a job's clip, transcribing the source first if it never was.
+
+        For a tightened clip the words are re-timed onto the shortened clip (removed words drop out).
+        """
         with self.db.connect() as conn:
             clip = conn.execute("SELECT * FROM clips WHERE id = ?", (row["clip_id"],)).fetchone()
             src = conn.execute("SELECT * FROM sources WHERE id = ?", (row["source_id"],)).fetchone()
@@ -336,6 +365,10 @@ class ExportManager:
             ensure_transcript(self.settings, src, token)
             with self.db.connect() as conn:
                 cues, _, style = clip_cues(conn, self.settings, clip)
+        if timemap and cues:
+            with self.db.connect() as conn:
+                words, _ = clip_words(conn, self.settings, clip)
+            cues = make_cues(timemap.map_words(words or []), style, end_limit=round(timemap.duration))
         return cues or [], style
 
     def _finish_batch(self, batch_id: str) -> None:

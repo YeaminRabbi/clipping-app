@@ -24,6 +24,8 @@ class ExportPreset(BaseModel):
     captions: Literal["off", "burn", "burn_srt", "srt"] = "off"
     # Also bundle the finished videos (and .srt files) into one ZIP.
     zip: bool = False
+    # Remove filler words and long pauses from clips that don't have their own Tighten setting.
+    tighten_all: bool = False
     output_dir: str
     name_template: str = Field(default="{project}_{index}_{title}_{ratio}", min_length=1, max_length=200)
 

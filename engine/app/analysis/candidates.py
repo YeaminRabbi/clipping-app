@@ -148,8 +148,10 @@ def snap(
         next_start = (
             words[cand.last_word + 1]["start"] - WORD_GUARD_MS if cand.last_word + 1 < len(words) else duration_ms
         )
-        start = max(prev_end, first["start"] - LEAD_IN_MS, 0)
-        end = min(next_start, last["end"] + TAIL_MS, duration_ms)
+        # The clip's own words always win: when neighbouring words touch (Whisper often gives
+        # back-to-back timings), the edge sits exactly on the boundary rather than inside a kept word.
+        start = min(first["start"], max(prev_end, first["start"] - LEAD_IN_MS, 0))
+        end = max(last["end"], min(next_start, last["end"] + TAIL_MS, duration_ms))
         cut = _nearest(cuts, start, max(prev_end, start - SNAP_WINDOW_MS), min(first["start"], start + SNAP_WINDOW_MS))
         if cut is not None:
             start = cut

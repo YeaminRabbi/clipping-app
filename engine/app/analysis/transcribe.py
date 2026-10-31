@@ -15,6 +15,11 @@ from ..media import CancelToken, Cancelled, MediaError
 SAMPLE_RATE = 16000
 MODELS = ("tiny", "base", "small")  # fast / balanced / accurate
 DEFAULT_MODEL = "base"
+# Bump when transcripts change in a way older saved ones lack; those are then redone.
+# 2: filler words ("um", "uh") are kept, so they can be cut out.
+TRANSCRIPT_VERSION = 2
+# Whisper tidies speech by dropping fillers; a prompt that contains them makes it write them down.
+FILLER_PROMPT = "Umm, let me think like, hmm... Okay, uh, here's what I'm, um, thinking."
 
 # huggingface_hub warns about symlinks on Windows; the fallback works fine.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -61,6 +66,8 @@ def load_cached(path: Path, model: str, language: str | None) -> dict[str, Any] 
         return None
     if language and data.get("language") != language:
         return None
+    if data.get("version", 1) < TRANSCRIPT_VERSION:
+        return None
     return data
 
 
@@ -89,6 +96,7 @@ def transcribe(
         word_timestamps=True,
         vad_filter=True,
         condition_on_previous_text=False,  # reduces repeated-phrase hallucinations on long files
+        initial_prompt=FILLER_PROMPT,
     )
     words: list[dict[str, Any]] = []
     for segment in segments:  # lazy: the work happens while iterating
@@ -100,4 +108,4 @@ def transcribe(
                 words.append({"start": round(w.start * 1000), "end": round(w.end * 1000), "text": text})
         if on_progress and duration_ms:
             on_progress(min(1.0, segment.end * 1000 / duration_ms))
-    return {"model": model, "language": info.language, "words": words}
+    return {"version": TRANSCRIPT_VERSION, "model": model, "language": info.language, "words": words}

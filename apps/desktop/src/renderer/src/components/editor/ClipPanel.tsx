@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { Clip, FitStyle, FramingMode } from '../../lib/api'
+import { DEFAULT_TIGHTEN, type Clip, type CutPlan, type FitStyle, type FollowMode, type FramingMode, type SmartOptions, type Tighten } from '../../lib/api'
+import { useApp } from '../../store'
 import { ASPECTS } from '../../lib/aspects'
 import { shortDuration, timecode } from '../../lib/time'
 import { AnalysisStatus } from '../AnalysisStatus'
@@ -21,7 +22,30 @@ const MODES: [FramingMode, string, string][] = [
   ['fit', 'Fit', 'Keeps the whole frame over a background']
 ]
 
-function SmartInfo({ tracking, faceRatio, stale, onRetrack }: Props) {
+function SmartInfo({ tracking, faceRatio, stale, onRetrack, smart, onFollow }: Props) {
+  const follow = smart?.follow ?? 'speaker'
+  const followPicker = (
+    <div className="mt-2 flex items-center gap-2 text-[11px]">
+      <span className="text-muted">Follow</span>
+      <div className="flex flex-1 rounded-md border border-line p-0.5">
+        {(
+          [
+            ['speaker', 'Who’s talking'],
+            ['largest', 'Biggest face']
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            disabled={tracking}
+            onClick={() => value !== follow && onFollow(value)}
+            className={`flex-1 rounded px-2 py-1 disabled:opacity-50 ${follow === value ? 'bg-panel-2 text-white' : 'text-muted hover:text-white'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
   if (tracking) {
     return (
       <p className="mt-2 flex items-center gap-2 text-xs text-muted">
@@ -31,18 +55,98 @@ function SmartInfo({ tracking, faceRatio, stale, onRetrack }: Props) {
     )
   }
   return (
+    <>
+    {followPicker}
     <div className="mt-2 text-[11px] text-muted">
       {stale ? (
         <span className="text-amber-300">The clip changed since faces were tracked. </span>
       ) : faceRatio === null ? null : faceRatio === 0 ? (
         <span className="text-amber-300">No faces found, so the crop stays centered. </span>
+      ) : smart?.followed === 'speaker' ? (
+        <span>
+          Cuts between {smart.speakers} speakers ({smart.switches ?? 0} switch{smart.switches === 1 ? '' : 'es'}).{' '}
+        </span>
       ) : (
-        <span>Faces found in {Math.round(faceRatio * 100)}% of the clip. </span>
+        <span>
+          Faces found in {Math.round(faceRatio * 100)}% of the clip
+          {follow === 'speaker' ? '; one person on screen, so the camera follows them' : ''}.{' '}
+        </span>
       )}
       <button onClick={onRetrack} className="text-white/80 underline-offset-2 hover:text-white hover:underline">
         Track again
       </button>
     </div>
+    </>
+  )
+}
+
+const secondsLabel = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Props) {
+  const transcribe = useApp((s) => s.transcribe)
+  const transcribing = useApp((s) => s.analyses[sourceId]?.task === 'transcribe' && ['queued', 'running'].includes(s.analyses[sourceId]?.status ?? ''))
+  const [pause, setPause] = useState(tighten?.max_pause_ms ?? DEFAULT_TIGHTEN.max_pause_ms)
+  useEffect(() => setPause(tighten?.max_pause_ms ?? DEFAULT_TIGHTEN.max_pause_ms), [tighten?.max_pause_ms])
+  if (!selected) return null
+  const current = tighten ?? { ...DEFAULT_TIGHTEN, remove_fillers: false, remove_pauses: false }
+  const update = (patch: Partial<Tighten>) => {
+    const next = { ...current, ...patch }
+    onTighten(next.remove_fillers || next.remove_pauses ? next : null)
+  }
+  const length = selected.end_ms - selected.start_ms
+
+  return (
+    <section className="mt-6">
+      <h4 className="text-xs font-semibold tracking-wide text-muted uppercase">Tighten</h4>
+      <div className="mt-2 flex flex-col gap-2 text-xs">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input type="checkbox" checked={current.remove_fillers} onChange={(e) => update({ remove_fillers: e.target.checked })} className="accent-[#7c5cff]" />
+          Remove filler words (um, uh)
+        </label>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input type="checkbox" checked={current.remove_pauses} onChange={(e) => update({ remove_pauses: e.target.checked })} className="accent-[#7c5cff]" />
+          Shorten pauses longer than {secondsLabel(pause)}
+        </label>
+        {current.remove_pauses && (
+          <input
+            type="range"
+            min={200}
+            max={2000}
+            step={100}
+            value={pause}
+            onChange={(e) => setPause(Number(e.target.value))}
+            onPointerUp={() => update({ max_pause_ms: pause })}
+            onKeyUp={() => update({ max_pause_ms: pause })}
+            className="accent-[#7c5cff]"
+          />
+        )}
+        {tighten && cutPlan?.status === 'ready' && (
+          <p className="text-[11px] text-muted">
+            {cutPlan.removed_ms ? (
+              <>
+                Removes {cutPlan.fillers} filler{cutPlan.fillers === 1 ? '' : 's'} and {cutPlan.pauses} pause
+                {cutPlan.pauses === 1 ? '' : 's'}: <span className="text-white/90">{secondsLabel(length)} → {secondsLabel(cutPlan.duration_ms ?? length)}</span>.
+                Playback skips the removed parts.
+              </>
+            ) : (
+              'Nothing to remove in this clip.'
+            )}
+          </p>
+        )}
+        {tighten && cutPlan?.status === 'needs_transcript' && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-line p-2 text-[11px] text-muted">
+            Needs the speech transcribed first.
+            <button
+              onClick={() => void transcribe(sourceId, 'base', null)}
+              disabled={transcribing}
+              className="shrink-0 rounded bg-accent px-2 py-1 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {transcribing ? 'Transcribing…' : 'Transcribe'}
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -96,6 +200,11 @@ function FitControls({ style, onChange, onCommit }: { style: FitStyle; onChange(
 }
 
 interface Props {
+  smart: SmartOptions | null
+  onFollow(follow: FollowMode): void
+  tighten: Tighten | null
+  cutPlan: CutPlan | null
+  onTighten(tighten: Tighten | null): void
   tracking: boolean
   faceRatio: number | null
   stale: boolean
@@ -332,6 +441,7 @@ export function ClipPanel(props: Props) {
             </div>
           </section>
         )}
+        {selected && <TightenSection {...props} />}
       </div>
     </aside>
   )
