@@ -5,7 +5,9 @@ import {
   type Clip,
   type ClipCaptions,
   type Crop,
+  type CutPlan,
   type FitStyle,
+  type FollowMode,
   type FramingMode
 } from '../../lib/api'
 import { CaptionsPanel } from './CaptionsPanel'
@@ -92,6 +94,27 @@ export function EditorView() {
     }
   }, [client, selected?.id, selected?.start_ms, selected?.end_ms, captionsVersion])
 
+  // What Tighten removes from the selected clip; playback jumps over those parts.
+  const [cutPlan, setCutPlan] = useState<CutPlan | null>(null)
+  const cutsRef = useRef<{ start: number; end: number }[]>([])
+  useEffect(() => {
+    setCutPlan(null)
+    cutsRef.current = []
+    if (!client || !selected?.tighten) return
+    let cancelled = false
+    client
+      .getCutPlan(selected.id)
+      .then((plan) => {
+        if (cancelled) return
+        setCutPlan(plan)
+        cutsRef.current = plan.cuts ?? []
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [client, selected?.id, selected?.start_ms, selected?.end_ms, JSON.stringify(selected?.tighten), captionsVersion])
+
   const editCaption = async (cue: CaptionCue, text: string) => {
     if (!client || !selected) return
     try {
@@ -119,6 +142,10 @@ export function EditorView() {
     if (!video) return
     let handle = 0
     const onFrame: VideoFrameRequestCallback = (_now, meta) => {
+      const ms = meta.mediaTime * 1000
+      // Preview the tightened clip: jump over removed fillers and pauses while playing.
+      const cut = !video.paused ? cutsRef.current.find((c) => ms >= c.start && ms < c.end - 15) : undefined
+      if (cut) video.currentTime = cut.end / 1000 + 0.001
       setFrame(Math.min(totalFrames - 1, Math.floor(meta.mediaTime * fps + 1e-3)))
       handle = video.requestVideoFrameCallback(onFrame)
     }
@@ -176,7 +203,7 @@ export function EditorView() {
       const fmt = saved?.formats[aspect]
       if (saved && fmt?.mode === 'smart' && fmt.stale) {
         setTracking(true)
-        await setClipFormat(saved.id, aspect, 'smart', null)
+        await setClipFormat(saved.id, aspect, 'smart', null, undefined, fmt.options.follow ?? 'speaker')
         setTracking(false)
       }
     },
@@ -184,13 +211,14 @@ export function EditorView() {
   )
 
   /** Change a clip's framing for the current size, with undo. Smart mode runs face tracking (a few seconds). */
-  const commitFormat = async (clip: Clip, nextMode: FramingMode, nextCrop: Crop | null, nextFit?: FitStyle) => {
+  const commitFormat = async (clip: Clip, nextMode: FramingMode, nextCrop: Crop | null, nextFit?: FitStyle, follow?: FollowMode) => {
     const prev = clip.formats[aspect]
     const beforeMode: FramingMode = prev?.mode ?? 'manual'
     const beforeCrop = prev?.mode === 'manual' && prev.crop ? prev.crop : centered
     const beforeFit = prev?.mode === 'fit' ? { ...DEFAULT_FIT, ...prev.options } : undefined
     if (nextMode === 'smart') setTracking(true)
-    const saved = await setClipFormat(clip.id, aspect, nextMode, nextCrop, nextFit)
+    const nextFollow = nextMode === 'smart' ? (follow ?? prev?.options.follow ?? 'speaker') : undefined
+    const saved = await setClipFormat(clip.id, aspect, nextMode, nextCrop, nextFit, nextFollow)
     setTracking(false)
     if (saved) {
       const a = aspect
@@ -444,6 +472,11 @@ export function EditorView() {
           fps={fps}
           aspect={aspect}
           mode={mode}
+          smart={mode === 'smart' ? (format?.options ?? null) : null}
+          onFollow={(f) => selected && void commitFormat(selected, 'smart', null, undefined, f)}
+          tighten={selected?.tighten ?? null}
+          cutPlan={cutPlan}
+          onTighten={(t) => selected && void updateClip(selected.id, { tighten: t })}
           tracking={tracking}
           faceRatio={mode === 'smart' ? (format?.options.face_ratio ?? null) : null}
           stale={mode === 'smart' && !!format?.stale}
@@ -481,6 +514,7 @@ export function EditorView() {
         range={range}
         currentMs={currentMs}
         playing={playing}
+        cuts={cutPlan?.cuts ?? []}
         onSeek={seekMs}
         onRangeChange={(r, final) => void onRangeChange(r, final)}
         onSelect={select}

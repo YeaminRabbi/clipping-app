@@ -12,7 +12,8 @@ from .detect import Face
 FOLLOW_RADIUS = 0.15  # stick with the same face if it stays within this distance between samples
 MIN_AREA_RATIO = 0.5  # ... and isn't much smaller than the biggest face
 HOLD_STILL_RANGE = 0.35  # if the subject moves less than this share of the crop width, don't move at all
-SMOOTH_WINDOW = 7  # samples (~1.4 s at 5 fps) for the moving average
+MEDIAN_WINDOW_MS = 1000  # drops one-off false detections
+SMOOTH_WINDOW_MS = 1400  # moving average
 MAX_SPEED = 0.35  # crop width per second, so pans never whip
 HEADROOM = 0.12  # face sits this much above the crop's vertical center
 SIMPLIFY_TOLERANCE = 0.002  # ~4 px at 1920 wide; path points closer than this to a line are dropped
@@ -82,12 +83,19 @@ def _shot_path(points: list[tuple[int, float | None]], fallback: float, crop_siz
     for _, v in points:
         last = v if v is not None else last
         filled.append(last)
-    filled = _median_filter(filled)  # drops one-off false detections
+    times = [t for t, _ in points]
+    # Windows are defined in time, so they behave the same at any sampling rate.
+    step = statistics.median(b - a for a, b in zip(times, times[1:])) if len(times) > 1 else 200
+    filled = _median_filter(filled, _odd(MEDIAN_WINDOW_MS / step))  # drops one-off false detections
     if max(filled) - min(filled) < HOLD_STILL_RANGE * crop_size:
         return [statistics.median(filled)] * len(filled)
-    times = [t for t, _ in points]
-    smooth = _moving_average(filled, SMOOTH_WINDOW)
+    smooth = _moving_average(filled, _odd(SMOOTH_WINDOW_MS / step))
     return _limit_speed(smooth, times, MAX_SPEED * crop_size / 1000)
+
+
+def _odd(samples: float) -> int:
+    n = max(1, round(samples))
+    return n if n % 2 else n + 1
 
 
 def _simplify(points: list[Keyframe]) -> list[Keyframe]:

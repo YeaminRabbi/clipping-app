@@ -41,6 +41,7 @@ def _to_dict(row: sqlite3.Row, formats: dict[str, Any]) -> dict[str, Any]:
         "status": row["status"],
         "score": row["score"],
         "reasons": json.loads(row["score_reasons_json"] or "[]"),
+        "tighten": json.loads(row["edit_json"] or "{}").get("tighten"),
         "sort_order": row["sort_order"],
         "formats": formats,
     }

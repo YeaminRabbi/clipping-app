@@ -188,6 +188,30 @@ def trim_window(start_ms: int, end_ms: int, fps: str) -> tuple[float, Fraction]:
     return seek, (end_frame - start_frame) / rate
 
 
+def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: bool) -> tuple[float, Fraction, str]:
+    """(seek seconds, total duration, graph) keeping only the frames and audio inside `segments`.
+
+    Uses select/aselect and renumbers timestamps, which streams through the source once instead of
+    buffering every segment. Video picks frames by number (half-frame margins, as in trim_window);
+    audio is cut at the exact frame times, so picture and sound stay in sync across every join.
+    """
+    rate = Fraction(fps)
+    frames = [(round(a * rate / 1000), round(b * rate / 1000)) for a, b in segments]
+    frames = [(fa, fb) for fa, fb in frames if fb > fa]
+    seek = max(0.0, float((frames[0][0] - Fraction(1, 2)) / rate))
+    video_terms, audio_terms = [], []
+    for fa, fb in frames:
+        va, vb = float((fa - Fraction(1, 2)) / rate) - seek, float((fb - Fraction(1, 2)) / rate) - seek
+        aa, ab = float(fa / rate) - seek, float(fb / rate) - seek
+        video_terms.append(f"between(t,{va:.6f},{vb - 1e-6:.6f})")
+        audio_terms.append(f"between(t,{aa:.6f},{ab - 1e-6:.6f})")
+    duration = sum((Fraction(fb - fa) / rate for fa, fb in frames), Fraction(0))
+    graph = f"[0:v]select='{'+'.join(video_terms)}',setpts=N/({rate.numerator}/{rate.denominator})/TB[vsel]"
+    if has_audio:
+        graph += f";[0:a]aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
+    return seek, duration, graph
+
+
 def output_frame_count(duration: Fraction, output_fps: str) -> int:
     return max(1, round(duration * Fraction(output_fps)))
 
@@ -208,9 +232,22 @@ def render_clip(
     quality: str,
     cancel: CancelToken,
     on_progress: Callable[[float], None] | None = None,
+    segments: list[tuple[float, float]] | None = None,
 ) -> None:
+    """Render [start_ms, end_ms], or only the kept `segments` inside it, played back to back.
+
+    `video_filter` reads the source as [0:v]; for segments it's fed the joined frames instead.
+    """
     seek, duration = trim_window(start_ms, end_ms, source_fps)
-    audio = ["-map", "0:a:0?", "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio else ["-an"]
+    audio_map = "0:a:0?"
+    input_limit: list[str] = []
+    if segments and len(segments) > 1:
+        seek, duration, select_graph = segment_select(segments, source_fps, has_audio)
+        video_filter = select_graph + ";" + video_filter.replace("[0:v]", "[vsel]")
+        audio_map = "[asel]"
+        # Stop reading the source at the end of the last segment.
+        input_limit = ["-t", f"{segments[-1][1] / 1000 - seek + 0.2:.6f}"]
+    audio = ["-map", audio_map, "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio else ["-an"]
     tmp = dest.with_name(dest.stem + ".partial" + dest.suffix)
     # The graph goes in a file: a moving crop's expression can exceed the command-line length limit.
     graph = dest.with_name(dest.stem + ".partial.graph.txt")
@@ -218,7 +255,7 @@ def render_clip(
     # An exact frame count for video: a printed duration is rounded and can let one extra frame in.
     # The duration still bounds the audio.
     args = [
-        "-ss", f"{seek:.6f}", "-i", str(src), "-t", f"{float(duration):.6f}",
+        "-ss", f"{seek:.6f}", *input_limit, "-i", str(src), "-t", f"{float(duration):.6f}",
         "-/filter_complex", str(graph), "-map", "[v]", "-r", output_fps,
         "-frames:v", str(output_frame_count(duration, output_fps)),
         *encoder_args(encoder, quality),

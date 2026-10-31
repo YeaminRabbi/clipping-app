@@ -13,20 +13,24 @@ from ..ffmpeg import NO_WINDOW
 from ..media import CancelToken, Cancelled, MediaError
 
 MODEL_PATH = ENGINE_DIR / "models" / "face_detection_yunet_2023mar.onnx"
-SAMPLE_FPS = 5
+# 10 per second: consecutive samples are close enough in time to see lips move.
+SAMPLE_FPS = 10
 SCORE_THRESHOLD = 0.6
 NMS_THRESHOLD = 0.3
 
 
 @dataclass
 class Face:
-    """A face box normalized to the frame (0..1)."""
+    """A face box normalized to the frame (0..1), with the mouth position when the detector gives it."""
 
     x: float
     y: float
     w: float
     h: float
     score: float
+    mouth_x: float | None = None  # center between the mouth corners
+    mouth_y: float | None = None
+    mouth_w: float | None = None  # distance between the mouth corners
 
     @property
     def cx(self) -> float:
@@ -58,11 +62,30 @@ class FaceDetector:
         _, faces = self._net.detect(frame)
         if faces is None:
             return []
+        # YuNet rows: box (x, y, w, h), then landmarks: eyes (4-7), nose (8-9), mouth corners (10-13), score (14).
         return [
             Face(x=float(f[0]) / self.width, y=float(f[1]) / self.height, w=float(f[2]) / self.width,
-                 h=float(f[3]) / self.height, score=float(f[14]))
+                 h=float(f[3]) / self.height, score=float(f[14]),
+                 mouth_x=float(f[10] + f[12]) / 2 / self.width, mouth_y=float(f[11] + f[13]) / 2 / self.height,
+                 mouth_w=abs(float(f[12] - f[10])) / self.width)
             for f in faces
         ]  # fmt: skip
+
+
+def mouth_patch(gray: np.ndarray, face: Face) -> np.ndarray | None:
+    """A small, size-normalized grayscale patch around the mouth, for measuring lip movement."""
+    import cv2
+
+    h, w = gray.shape
+    cx = face.mouth_x if face.mouth_x is not None else face.cx
+    cy = face.mouth_y if face.mouth_y is not None else face.y + face.h * 0.78
+    half_w = max((face.mouth_w or face.w * 0.4) * 0.75, face.w * 0.2) * w
+    half_h = face.h * 0.16 * h
+    x0, x1 = int(cx * w - half_w), int(cx * w + half_w)
+    y0, y1 = int(cy * h - half_h), int(cy * h + half_h)
+    if x1 - x0 < 4 or y1 - y0 < 4 or x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+        return None
+    return cv2.resize(gray[y0:y1, x0:x1], (32, 16), interpolation=cv2.INTER_AREA).astype(np.float32)
 
 
 def video_size(ffprobe: str, path: Path) -> tuple[int, int]:

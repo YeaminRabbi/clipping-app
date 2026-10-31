@@ -219,3 +219,42 @@ def test_export_burns_captions_writes_srt_and_zips(client, clip, tmp_path, monke
     with zipfile.ZipFile(batches[0]["zip_path"]) as zf:
         names = sorted(zf.namelist())
     assert sum(n.endswith(".mp4") for n in names) == 2 and sum(n.endswith(".srt") for n in names) == 2
+
+
+def test_concurrent_exports_transcribe_a_video_only_once(tmp_path, monkeypatch):
+    """Exporting several sizes at once used to start one transcription per job and crash writing the file."""
+    import threading
+    from types import SimpleNamespace
+
+    from app.captions import service
+
+    settings = Settings(data_dir=tmp_path, token=None, bin_dir=BIN_DIR)
+    source = {"id": 7, "project_id": 1, "has_audio": True, "proxy_path": str(tmp_path / "p.mp4"), "duration_ms": 1000}
+    (tmp_path / "projects" / "1" / "sources" / "7").mkdir(parents=True)
+    calls: list[int] = []
+
+    def slow_transcribe(*args, **kwargs):
+        calls.append(1)
+        time.sleep(0.4)  # long enough for the other jobs to arrive
+        return {"version": service_version(), "model": "base", "language": "en", "words": [{"start": 0, "end": 100, "text": "hi"}]}
+
+    def service_version():
+        from app.analysis.transcribe import TRANSCRIPT_VERSION
+
+        return TRANSCRIPT_VERSION
+
+    monkeypatch.setattr("app.analysis.transcribe.transcribe", slow_transcribe)
+    monkeypatch.setattr("app.ffmpeg.detect", lambda _dir: SimpleNamespace(ffmpeg=SimpleNamespace(path="ffmpeg")))
+    results, errors = [], []
+
+    def job():
+        try:
+            results.append(service.ensure_transcript(settings, source, None))
+        except Exception as err:  # noqa: BLE001
+            errors.append(err)
+
+    threads = [threading.Thread(target=job) for _ in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert errors == [] and len(results) == 4
+    assert len(calls) == 1, f"transcribed {len(calls)} times; the others should reuse the first result"

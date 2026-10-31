@@ -14,6 +14,7 @@ import {
   type ProjectCaptionStyle,
   type ExportPreset,
   type FitStyle,
+  type FollowMode,
   type FramingMode,
   type Health,
   type Project,
@@ -67,8 +68,8 @@ interface AppState {
   deleteSource(id: number): Promise<void>
 
   createClip(sourceId: number, startMs: number, endMs: number): Promise<Clip | null>
-  updateClip(id: number, patch: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title'>>): Promise<Clip | null>
-  setClipFormat(id: number, aspect: string, mode: FramingMode, crop: Crop | null, fit?: FitStyle): Promise<Clip | null>
+  updateClip(id: number, patch: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'tighten'>>): Promise<Clip | null>
+  setClipFormat(id: number, aspect: string, mode: FramingMode, crop: Crop | null, fit?: FitStyle, follow?: FollowMode): Promise<Clip | null>
   deleteClip(id: number): Promise<void>
 
   openAutoClipDialog(sourceId: number, range?: { start: number; end: number } | null): void
@@ -311,9 +312,9 @@ export const useApp = create<AppState>((set, get) => {
         return clip
       }),
 
-    setClipFormat: (id, aspect, mode, crop, fit) =>
+    setClipFormat: (id, aspect, mode, crop, fit, follow) =>
       run(async (client) => {
-        const clip = await client.setClipFormat(id, aspect, { mode, crop, ...(fit ? { fit } : {}) })
+        const clip = await client.setClipFormat(id, aspect, { mode, crop, ...(fit ? { fit } : {}), ...(follow ? { follow } : {}) })
         set({ clips: upsert(get().clips, clip, false) })
         return clip
       }),
