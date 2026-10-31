@@ -6,6 +6,7 @@ export function Projects() {
   const projects = useApp((s) => s.projects)
   const createProject = useApp((s) => s.createProject)
   const deleteProject = useApp((s) => s.deleteProject)
+  const openProject = useApp((s) => s.openProject)
   const [name, setName] = useState('')
 
   const submit = async (e: FormEvent) => {
@@ -44,19 +45,19 @@ export function Projects() {
           </li>
         )}
         {projects.map((p) => (
-          <li key={p.id} className="flex items-center justify-between rounded-md border border-line bg-panel-2 px-4 py-3">
-            <div>
-              <div className="text-sm font-medium">{p.name}</div>
+          <li key={p.id} className="flex items-center justify-between rounded-md border border-line bg-panel-2 hover:border-accent/60">
+            <button onClick={() => void openProject(p.id)} className="min-w-0 flex-1 px-4 py-3 text-left">
+              <div className="truncate text-sm font-medium">{p.name}</div>
               <div className="text-xs text-muted">
                 {p.source_count} source{p.source_count === 1 ? '' : 's'} · created{' '}
                 {new Date(p.created_at).toLocaleString()}
               </div>
-            </div>
+            </button>
             <button
               onClick={() => {
                 if (confirm(`Delete project "${p.name}"? This removes its clips from the app.`)) void deleteProject(p.id)
               }}
-              className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-red-950/60 hover:text-red-300"
+              className="mr-3 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-red-950/60 hover:text-red-300"
             >
               Delete
             </button>

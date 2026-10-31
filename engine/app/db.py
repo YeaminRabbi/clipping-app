@@ -94,6 +94,58 @@ MIGRATIONS: list[str] = [
     ALTER TABLE sources ADD COLUMN is_vfr INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE sources ADD COLUMN poster_path TEXT;
     """,
+    # Editing and export.
+    """
+    ALTER TABLE clips ADD COLUMN created_at TEXT;
+    ALTER TABLE export_jobs ADD COLUMN encoder TEXT;
+    ALTER TABLE export_jobs ADD COLUMN output_name TEXT;
+    CREATE UNIQUE INDEX idx_clip_formats_clip_aspect ON clip_formats(clip_id, aspect);
+    """,
+    # Automatic clip finding: the latest analysis per source, with the ranked pool of candidates
+    # kept for "Replace this clip".
+    """
+    CREATE TABLE analyses (
+        source_id     INTEGER PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+        status        TEXT NOT NULL DEFAULT 'queued',
+        stage         TEXT,
+        progress      REAL NOT NULL DEFAULT 0,
+        settings_json TEXT NOT NULL DEFAULT '{}',
+        result_json   TEXT,
+        error         TEXT,
+        updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    """,
+    # Fit-mode styling (background, darkening, zoom, position) and smart-tracking stats.
+    """
+    ALTER TABLE clip_formats ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}';
+    """,
+    # Captions (one style per project, edited words per clip) and export batches (for ZIP files).
+    """
+    ALTER TABLE caption_styles ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}';
+    CREATE UNIQUE INDEX idx_caption_styles_project ON caption_styles(project_id);
+
+    -- What an analysis row is doing right now: finding clips, or only transcribing for captions.
+    ALTER TABLE analyses ADD COLUMN task TEXT NOT NULL DEFAULT 'find_clips';
+
+    CREATE TABLE clip_captions (
+        clip_id    INTEGER PRIMARY KEY REFERENCES clips(id) ON DELETE CASCADE,
+        words_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    ALTER TABLE export_jobs ADD COLUMN batch_id TEXT;
+    ALTER TABLE export_jobs ADD COLUMN srt_path TEXT;
+    CREATE INDEX idx_export_jobs_batch ON export_jobs(batch_id);
+
+    CREATE TABLE export_batches (
+        id         TEXT PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        zip        INTEGER NOT NULL DEFAULT 0,
+        zip_path   TEXT,
+        error      TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    """,
 ]
 
 

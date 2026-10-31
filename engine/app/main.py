@@ -1,5 +1,6 @@
 """Clipping engine: a local HTTP + WebSocket service the Electron app talks to."""
 
+import asyncio
 import secrets
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -9,13 +10,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import __version__, ffmpeg
-from .api import projects
+from .analysis.manager import AnalysisManager
+from .api import analysis, captions, clips, exports, projects, sources
 from .config import Settings, load_settings
 from .db import Database
 from .events import EventHub
+from .exports import ExportManager
+from .ingest import IngestManager
+from .media import MediaError
 
 # Paths that must answer before the client has the token (none for now; health is protected too).
 PUBLIC_PATHS: set[str] = set()
+# <video> and <img> tags can't send headers, so media URLs may carry the token as ?token=.
+QUERY_TOKEN_PREFIX = "/media/"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,12 +31,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.db.migrate()
+        app.state.events.attach_loop(asyncio.get_running_loop())
+        app.state.ingest.start()
+        app.state.exports.start()
+        app.state.analysis.start()
         yield
+        app.state.ingest.shutdown()
+        app.state.exports.shutdown()
+        app.state.analysis.shutdown()
 
     app = FastAPI(title="Clipping Engine", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.db = Database(settings.db_path)
     app.state.events = EventHub()
+    app.state.ingest = IngestManager(settings, app.state.db, app.state.events)
+    app.state.exports = ExportManager(settings, app.state.db, app.state.events)
+    app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events)
 
     def token_ok(supplied: str | None) -> bool:
         return settings.token is None or (supplied is not None and secrets.compare_digest(supplied, settings.token))
@@ -39,7 +56,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Any local process or web page can reach a localhost port, so every request must carry the
         # per-launch token that only the Electron app knows.
         if request.method != "OPTIONS" and request.url.path not in PUBLIC_PATHS:
-            if not token_ok(request.headers.get("x-engine-token")):
+            supplied = request.headers.get("x-engine-token")
+            if supplied is None and request.url.path.startswith(QUERY_TOKEN_PREFIX):
+                supplied = request.query_params.get("token")
+            if not token_ok(supplied):
                 return JSONResponse({"detail": "Invalid engine token"}, status_code=status.HTTP_401_UNAUTHORIZED)
         return await call_next(request)
 
@@ -80,5 +100,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await hub.disconnect(ws)
 
+    @app.exception_handler(MediaError)
+    async def media_error(_request: Request, err: MediaError):
+        # Media failures inside a request (e.g. face tracking) carry a message meant for the user.
+        return JSONResponse({"detail": str(err)}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
     app.include_router(projects.router)
+    app.include_router(sources.router)
+    app.include_router(clips.router)
+    app.include_router(exports.router)
+    app.include_router(analysis.router)
+    app.include_router(captions.router)
     return app

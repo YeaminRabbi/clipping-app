@@ -4,6 +4,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from .. import exports
+
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
@@ -70,7 +72,16 @@ def get_project(project_id: int, request: Request) -> Project:
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: int, request: Request) -> None:
+    ingest = request.app.state.ingest
     with request.app.state.db.connect() as conn:
+        source_ids = [r["id"] for r in conn.execute("SELECT id FROM sources WHERE project_id = ?", (project_id,))]
+        for job_id in exports.active_job_ids(conn, project_id=project_id):
+            request.app.state.exports.cancel(job_id)
         cur = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     if cur.rowcount == 0:
         raise HTTPException(404, "Project not found")
+    for source_id in source_ids:
+        ingest.cancel(source_id)
+        request.app.state.analysis.cancel(source_id)
+    # Downloads, proxies and posters live here; users' own files imported in place are elsewhere.
+    ingest.remove_files(ingest.project_dir(project_id))

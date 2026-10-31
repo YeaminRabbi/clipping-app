@@ -22,9 +22,9 @@ A desktop app that takes a video link or a local file, automatically segments it
 | Video I/O | FFmpeg / ffprobe (bundled) |
 | Link ingest | yt-dlp (bundled, self-updating) |
 | Transcription | faster-whisper (word timestamps; GPU if available, CPU fallback) — used for boundary snapping and optional captions |
-| Scene detection | PySceneDetect |
+| Scene detection | FFmpeg `scdet` filter on the proxy (no extra dependency; detects brightness changes) |
 | Audio analysis | FFmpeg `ebur128` / librosa (loudness, silence) |
-| Smart reframe | MediaPipe face detection + smoothing |
+| Smart reframe | OpenCV YuNet face detection (bundled 230 KB model), shot-aware tracking and smoothing |
 | Storage | SQLite + per-project media folder |
 | Jobs | Local job queue, progress over WebSocket |
 
@@ -46,10 +46,12 @@ A desktop app that takes a video link or a local file, automatically segments it
 ## Clipping Pipeline (no AI scoring)
 
 1. **Ingest** — URL via yt-dlp (best quality) or local file (referenced, not copied); ffprobe metadata.
-2. **Normalize** — 480p proxy for scrubbing; convert VFR sources to CFR so cuts are frame-exact.
+2. **Normalize** — 480p constant-frame-rate proxy for scrubbing (keyframe every second); VFR sources are
+   flagged, and exports re-encode at a constant rate so cuts are frame-exact. The original is never re-encoded
+   up front (too slow for long sources).
 3. **Transcribe** — faster-whisper word timestamps (skippable for music/no-speech videos).
 4. **Analyze signals** (per second of video):
-   - Scene cuts (PySceneDetect)
+   - Scene cuts (FFmpeg scdet)
    - Loudness / energy peaks and silence gaps
    - Speech density (words per second)
    - Face presence
@@ -62,7 +64,7 @@ A desktop app that takes a video link or a local file, automatically segments it
    | Energy peaks / loudness variance | + |
    | Speech density (steady talking) | + |
    | Scene-change activity (Action mode) | + |
-   | Face visible most of the clip | + |
+   | Face visible most of the clip (added with face tracking in Phase 4) | + |
    | User keyword matches in transcript | ++ |
    | Ends on a complete sentence | + |
    | Long silences inside the clip | − |
@@ -157,14 +159,14 @@ clipping-app/
 
 | Phase | Scope | Est. |
 |---|---|---|
-| 0. Foundation | Electron + React scaffold, Python sidecar, bundled FFmpeg, SQLite | 1 wk |
-| 1. Ingest | URL + file import, metadata, proxies, progress UI | 1 wk |
-| 2. Manual MVP | Player, timeline, trim, aspect presets + manual crop, batch export | 2 wk |
-| 3. Auto clipping | Whisper, scene + audio analysis, heuristic scoring, modes, select N, snapping | 2 wk |
-| 4. Smart reframe | Face tracking, smoothing, fit-with-blur | 1–2 wk |
-| 5. Optional captions | Caption toggle, editor, templates, burn-in + SRT | 1–2 wk |
-| 6. Polish & ship | Replace clip, HW encoding, naming templates, ZIP, installer, auto-update | 1–2 wk |
-| Later | Optional AI scoring, filler-word removal, batch sources, macOS, direct publishing | — |
+| 0. Foundation ✅ | Electron + React scaffold, Python sidecar, bundled FFmpeg, SQLite | 1 wk |
+| 1. Ingest ✅ | URL + file import, metadata, proxies, progress UI | 1 wk |
+| 2. Manual MVP ✅ | Player, timeline, trim, aspect presets + manual crop, batch export | 2 wk |
+| 3. Auto clipping ✅ | Whisper, scene + audio analysis, heuristic scoring, modes, select N, snapping | 2 wk |
+| 4. Smart reframe ✅ | Face tracking, smoothing, fit-with-blur | 1–2 wk |
+| 5. Optional captions ✅ | Caption toggle, editor, templates, burn-in + SRT | 1–2 wk |
+| 6. Polish & ship ✅ | Replace clip, HW encoding, naming templates, ZIP, installer, auto-update | 1–2 wk |
+| Later | Code signing, active-speaker framing, in-app yt-dlp updates, optional AI scoring, filler-word removal, batch sources, macOS, direct publishing | — |
 
 ## Risks
 

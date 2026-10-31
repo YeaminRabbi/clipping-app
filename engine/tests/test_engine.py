@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.db import MIGRATIONS
 from app.main import create_app
 
 TOKEN = "test-token"
@@ -29,7 +30,7 @@ def test_rejection_carries_cors_headers(client):
 def test_health_reports_db_and_ffmpeg(client):
     body = client.get("/health").json()
     assert body["status"] == "ok"
-    assert body["db"]["schema_version"] == 1
+    assert body["db"]["schema_version"] == len(MIGRATIONS)
     assert "ffmpeg" in body and "ok" in body["ffmpeg"]
 
 
