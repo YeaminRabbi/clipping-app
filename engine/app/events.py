@@ -10,6 +10,15 @@ class EventHub:
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def emit(self, event: str, data: Any = None) -> None:
+        """Thread-safe publish, for worker threads and sync routes."""
+        if self._loop and not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(self.publish(event, data), self._loop)
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()

@@ -13,6 +13,12 @@ class Settings:
     data_dir: Path
     token: str | None
     bin_dir: Path
+    # Speech-to-text models, downloaded on first use. Defaults to <data_dir>/models.
+    models_dir: Path | None = None
+
+    @property
+    def models_path(self) -> Path:
+        return self.models_dir or self.data_dir / "models"
 
     @property
     def db_path(self) -> Path:
@@ -33,4 +39,5 @@ def load_settings() -> Settings:
         # When unset (e.g. running the engine standalone for development) auth is disabled.
         token=os.environ.get("CLIP_ENGINE_TOKEN") or None,
         bin_dir=bin_dir,
+        models_dir=Path(os.environ["CLIP_MODELS_DIR"]) if os.environ.get("CLIP_MODELS_DIR") else None,
     )

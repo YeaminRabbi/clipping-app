@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { AppInfo } from '../../../shared/types'
 import { useApp } from '../store'
 
 const VENDOR_NAMES: Record<string, string> = { nvidia: 'NVIDIA', intel: 'Intel', amd: 'AMD', apple: 'Apple' }
@@ -21,6 +22,10 @@ export function SystemCheck() {
   const engine = useApp((s) => s.engine)
   const health = useApp((s) => s.health)
   const restartEngine = useApp((s) => s.restartEngine)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  useEffect(() => {
+    void window.clipping.app.info().then(setAppInfo)
+  }, [])
 
   const ready = engine.state === 'ready'
   const ff = health?.ffmpeg
@@ -58,6 +63,13 @@ export function SystemCheck() {
             : 'None in this FFmpeg build — exports will use the CPU'
           : '—'}
       </Row>
+
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-xs text-muted">
+        <span>{appInfo ? `Clipping App ${appInfo.version}` : ''}</span>
+        <button onClick={() => void window.clipping.app.openLogs()} className="rounded-md px-2 py-1 hover:bg-panel-2 hover:text-white">
+          Open logs folder
+        </button>
+      </div>
 
       {engine.state === 'error' && engine.logs.length > 0 && (
         <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-black/40 p-3 text-[11px] text-muted">

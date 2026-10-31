@@ -3,9 +3,11 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
+import { log, logsDir } from './log'
 import type { EngineStatus } from '../shared/types'
 
-const STARTUP_TIMEOUT_MS = 30_000
+// Generous: the first launch of the packaged engine can be slow while antivirus scans it.
+const STARTUP_TIMEOUT_MS = 60_000
 const MAX_LOG_LINES = 200
 const READY_PATTERN = /ENGINE_READY port=(\d+)/
 
@@ -67,6 +69,7 @@ export class EngineProcess {
         ? `Engine executable missing: ${command}`
         : `Python venv not found at ${command}. Run "npm run setup" in the project root.`
       this.update({ state: 'error', error, url: null, token: null })
+      log('error', error)
       return Promise.resolve(this.getStatus())
     }
 
@@ -83,11 +86,13 @@ export class EngineProcess {
         CLIP_DATA_DIR: dataDir,
         CLIP_BIN_DIR: binDir,
         CLIP_ENGINE_TOKEN: token,
+        CLIP_LOG_DIR: logsDir(),
         PYTHONUNBUFFERED: '1'
       },
       windowsHide: true
     })
     this.child = child
+    log('info', `Starting engine: ${command} ${args.join(' ')}`)
 
     return new Promise((resolvePromise) => {
       let settled = false
@@ -100,6 +105,7 @@ export class EngineProcess {
 
       const timer = setTimeout(() => {
         this.update({ state: 'error', error: `Engine did not start within ${STARTUP_TIMEOUT_MS / 1000}s` })
+        log('error', `Engine start timed out. Last output:\n${this.status.logs.slice(-20).join('\n')}`)
         this.stop()
         settle()
       }, STARTUP_TIMEOUT_MS)
@@ -110,6 +116,7 @@ export class EngineProcess {
         const match = READY_PATTERN.exec(chunk)
         if (match && this.status.state === 'starting') {
           this.update({ state: 'ready', url: `http://127.0.0.1:${match[1]}`, token })
+          log('info', `Engine ready on port ${match[1]}`)
           settle()
         }
       })
@@ -119,6 +126,7 @@ export class EngineProcess {
       child.on('error', (err) => {
         this.child = null
         this.update({ state: 'error', error: `Failed to launch engine: ${err.message}`, url: null, token: null })
+        log('error', `Failed to launch engine: ${err.message}`)
         settle()
       })
       child.on('exit', (code, signal) => {
@@ -126,6 +134,7 @@ export class EngineProcess {
         this.child = null
         if (this.status.state !== 'stopped') {
           const tail = this.status.logs.slice(-5).join('\n')
+          log('error', `Engine exited unexpectedly (${signal ?? `code ${code}`}). Last output:\n${this.status.logs.slice(-30).join('\n')}`)
           this.update({
             state: 'error',
             url: null,

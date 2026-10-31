@@ -6,15 +6,36 @@ process waits for. Pass --port 0 to let the OS pick a free port.
 
 import argparse
 import asyncio
+import logging
+import logging.handlers
+import os
 import socket
 import sys
+from pathlib import Path
 
 import uvicorn
 
 from app.main import create_app
 
 
+def setup_logging() -> None:
+    """Log to stderr, and to a rotating engine.log when the app gives us a folder (CLIP_LOG_DIR)."""
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    log_dir = os.environ.get("CLIP_LOG_DIR")
+    if log_dir:
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        handlers.append(
+            logging.handlers.RotatingFileHandler(Path(log_dir) / "engine.log", maxBytes=2_000_000, backupCount=2, encoding="utf-8")
+        )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", handlers=handlers)
+    # uvicorn's own loggers propagate to these handlers too.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logging.getLogger(name).handlers = []
+        logging.getLogger(name).propagate = True
+
+
 def main() -> None:
+    setup_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -25,7 +46,7 @@ def main() -> None:
     sock.bind((args.host, args.port))
     port = sock.getsockname()[1]
 
-    config = uvicorn.Config(create_app(), log_level="info")
+    config = uvicorn.Config(create_app(), log_level="info", log_config=None, access_log=False)  # no line per request
     server = uvicorn.Server(config)
 
     async def serve() -> None:

@@ -9,6 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 
 EXE = ".exe" if os.name == "nt" else ""
+# Keeps child processes from flashing a console window on Windows.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 # Hardware H.264/H.265 encoders we can use for export, by vendor.
 HW_ENCODERS = {
@@ -38,8 +40,7 @@ class FFmpegInfo:
 
 
 def _run(args: list[str], timeout: float = 10) -> str:
-    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, creationflags=flags)
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, creationflags=NO_WINDOW)
     return result.stdout
 
 

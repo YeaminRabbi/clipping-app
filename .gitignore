@@ -15,3 +15,11 @@ __pycache__/
 # Bundled binaries are copied in by scripts/bundle-ffmpeg.mjs, not committed
 bin/*
 !bin/.gitkeep
+
+# Speech models downloaded by the engine tests
+.cache/
+
+# Build output
+engine/build/
+engine/dist/
+apps/desktop/release/
