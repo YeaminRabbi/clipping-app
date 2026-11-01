@@ -1,0 +1,125 @@
+"""Speech-to-text with faster-whisper, producing word-level timestamps."""
+
+import json
+import os
+import subprocess
+import ctypes
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from ..ffmpeg import NO_WINDOW
+from ..media import CancelToken, Cancelled, MediaError
+
+SAMPLE_RATE = 16000
+MODELS = ("tiny", "base", "small")  # fast / balanced / accurate
+DEFAULT_MODEL = "base"
+# Bump when transcripts change in a way older saved ones lack; those are then redone.
+# 2: filler words ("um", "uh") are kept, so they can be cut out.
+TRANSCRIPT_VERSION = 2
+# Whisper tidies speech by dropping fillers; a prompt that contains them makes it write them down.
+FILLER_PROMPT = "Umm, let me think like, hmm... Okay, uh, here's what I'm, um, thinking."
+
+# huggingface_hub warns about symlinks on Windows; the fallback works fine.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+
+def decode_audio(ffmpeg: str, media: Path) -> np.ndarray:
+    """Mono 16 kHz float samples. Decoding with our FFmpeg handles every format the app imports."""
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-nostdin", "-i", str(media), "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-"],
+        capture_output=True,
+        creationflags=NO_WINDOW,
+    )
+    if result.returncode != 0:
+        raise MediaError("Could not read the audio track for transcription")
+    return np.frombuffer(result.stdout, dtype=np.float32)
+
+
+def model_is_downloaded(models_dir: Path, name: str) -> bool:
+    snapshots = models_dir / f"models--Systran--faster-whisper-{name}" / "snapshots"
+    return snapshots.is_dir() and any((s / "model.bin").is_file() for s in snapshots.iterdir())
+
+
+def _load_model(models_dir: Path, name: str):
+    import ctranslate2
+    from faster_whisper import WhisperModel
+
+    cuda_runtime_available = True
+    if os.name == "nt":
+        try:
+            ctypes.WinDLL("cublas64_12.dll")
+            ctypes.WinDLL("cudnn64_9.dll")
+        except OSError:
+            cuda_runtime_available = False
+
+    if cuda_runtime_available and ctranslate2.get_cuda_device_count() > 0:
+        try:
+            # A driver can report a CUDA device even when the user-space CUDA runtime (notably
+            # cublas64_12.dll on Windows) is absent. Force-load the backend before constructing
+            # WhisperModel; otherwise the failure is deferred until the first transcription and
+            # our CPU fallback never runs.
+            ctranslate2.get_supported_compute_types("cuda")
+            return WhisperModel(name, device="cuda", compute_type="float16", download_root=str(models_dir))
+        except Exception:
+            pass  # fall back to CPU, e.g. when CUDA libraries are missing
+    return WhisperModel(name, device="cpu", compute_type="int8", download_root=str(models_dir))
+
+
+def load_cached(path: Path, model: str, language: str | None) -> dict[str, Any] | None:
+    """A saved transcript is reused when it came from the same or a more accurate model."""
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if data.get("model") not in MODELS or MODELS.index(data["model"]) < MODELS.index(model):
+        return None
+    if language and data.get("language") != language:
+        return None
+    if data.get("version", 1) < TRANSCRIPT_VERSION:
+        return None
+    return data
+
+
+def transcribe(
+    ffmpeg: str,
+    media: Path,
+    duration_ms: int,
+    models_dir: Path,
+    model: str,
+    language: str | None,
+    cancel: CancelToken,
+    on_progress: Callable[[float], None] | None = None,
+) -> dict[str, Any]:
+    """Returns {"model", "language", "words": [{"start", "end", "text"}]} with times in ms."""
+    models_dir.mkdir(parents=True, exist_ok=True)
+    audio = decode_audio(ffmpeg, media)
+    cancel.raise_if_cancelled()
+    try:
+        whisper = _load_model(models_dir, model)
+    except Exception as err:
+        raise MediaError(f"Could not load the speech model ({err}). Check your internet connection for the first download.") from err
+
+    segments, info = whisper.transcribe(
+        audio,
+        language=language or None,
+        word_timestamps=True,
+        vad_filter=True,
+        condition_on_previous_text=False,  # reduces repeated-phrase hallucinations on long files
+        initial_prompt=FILLER_PROMPT,
+    )
+    words: list[dict[str, Any]] = []
+    for segment in segments:  # lazy: the work happens while iterating
+        if cancel.cancelled:
+            raise Cancelled()
+        for w in segment.words or []:
+            text = w.word.strip()
+            if text:
+                words.append({"start": round(w.start * 1000), "end": round(w.end * 1000), "text": text})
+        if on_progress and duration_ms:
+            on_progress(min(1.0, segment.end * 1000 / duration_ms))
+    return {"version": TRANSCRIPT_VERSION, "model": model, "language": info.language, "words": words}

@@ -1,0 +1,23 @@
+{
+  "name": "clipping-app",
+  "version": "0.1.0",
+  "private": true,
+  "config": {
+    "developmentStorage": "Set CLIPPING_APP_DATA_ROOT to override; Windows development defaults to <project drive>:\\Dev Tools\\Clipping App Dev"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "bundle:ffmpeg": "node scripts/bundle-ffmpeg.mjs",
+    "dev": "node scripts/run-desktop.mjs dev",
+    "build": "node scripts/run-desktop.mjs build",
+    "typecheck": "node scripts/run-desktop.mjs typecheck",
+    "test:engine": "node scripts/run-engine-tests.mjs",
+    "test:audio-controls": "node scripts/test-audio-controls.mjs",
+    "build:engine": "node scripts/build-engine.mjs",
+    "dist": "npm run build:engine && node scripts/run-desktop.mjs dist",
+    "release": "npm run build:engine && node scripts/run-desktop.mjs release"
+  }
+}

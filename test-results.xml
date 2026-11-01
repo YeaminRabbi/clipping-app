@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="102" time="892.664" timestamp="2026-11-01T15:56:14.187387+06:00" hostname="DESKTOP-LQVLA8D"><testcase classname="tests.test_analysis" name="test_talking_mode_finds_whole_sentences_with_keyword" time="3.431"><failure message="AssertionError: Unexpected error: Library cublas64_12.dll is not found or cannot be loaded&#10;assert 'failed' == 'done'&#10;  &#10;  - done&#10;  + failed">client = &lt;starlette.testclient.TestClient object at 0x000001C0AF66A900&gt;
+source = {'id': 1, 'project_id': 1, 'origin': 'file', 'url': None, ...}
+
+    def test_talking_mode_finds_whole_sentences_with_keyword(client, source):
+        a = analyze(client, source["id"], mode="talking", clip_count=2, min_seconds=5, max_seconds=16, keywords=["pricing"])
+&gt;       assert a["status"] == "done", a["error"]
+E       AssertionError: Unexpected error: Library cublas64_12.dll is not found or cannot be loaded
+E       assert 'failed' == 'done'
+E         
+E         - done
+E         + failed
+
+tests\test_analysis.py:55: AssertionError</failure></testcase><testcase classname="tests.test_analysis" name="test_replace_rerun_and_kept_clips" time="301.167"><failure message="AssertionError: analysis did not finish">client = &lt;starlette.testclient.TestClient object at 0x000001C0AF6BD430&gt;
+source = {'id': 1, 'project_id': 1, 'origin': 'file', 'url': None, ...}
+
+    def test_replace_rerun_and_kept_clips(client, source):
+&gt;       analyze(client, source["id"], mode="talking", clip_count=2, min_seconds=5, max_seconds=16)
+
+tests\test_analysis.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001C0AF6BD430&gt;
+source_id = 1, timeout = 300
+params = {'model': 'tiny', 'mode': 'talking', 'clip_count': 2, 'min_seconds': 5, ...}
+
+    def analyze(client, source_id: int, timeout: float = 300, **params) -&gt; dict:
+        params = {"model": "tiny", **params}
+        res = client.post(f"/sources/{source_id}/analyze", json=params)
+        assert res.status_code == 202, res.text
+        deadline = time.monotonic() + timeout
+        while time.monotonic() &lt; deadline:
+            a = client.get(f"/sources/{source_id}/analysis").json()
+            if a["status"] in ("done", "failed", "cancelled"):
+                return a
+            time.sleep(0.2)
+&gt;       raise AssertionError("analysis did not finish")
+E       AssertionError: analysis did not finish
+
+tests\test_analysis.py:50: AssertionError</failure></testcase><testcase classname="tests.test_analysis" name="test_action_mode_detects_cuts_and_snaps_onto_them" time="1.323" /><testcase classname="tests.test_analysis" name="test_even_split_and_range" time="1.316" /><testcase classname="tests.test_analysis" name="test_validation" time="1.110" /><testcase classname="tests.test_analysis" name="test_transcript_is_cached_between_runs" time="301.248"><failure message="AssertionError: analysis did not finish">client = &lt;starlette.testclient.TestClient object at 0x000001C0AFE35700&gt;
+source = {'id': 1, 'project_id': 1, 'origin': 'file', 'url': None, ...}
+
+    def test_transcript_is_cached_between_runs(client, source):
+&gt;       analyze(client, source["id"], mode="talking", clip_count=1, min_seconds=5, max_seconds=16)
+
+tests\test_analysis.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001C0AFE35700&gt;
+source_id = 1, timeout = 300
+params = {'model': 'tiny', 'mode': 'talking', 'clip_count': 1, 'min_seconds': 5, ...}
+
+    def analyze(client, source_id: int, timeout: float = 300, **params) -&gt; dict:
+        params = {"model": "tiny", **params}
+        res = client.post(f"/sources/{source_id}/analyze", json=params)
+        assert res.status_code == 202, res.text
+        deadline = time.monotonic() + timeout
+        while time.monotonic() &lt; deadline:
+            a = client.get(f"/sources/{source_id}/analysis").json()
+            if a["status"] in ("done", "failed", "cancelled"):
+                return a
+            time.sleep(0.2)
+&gt;       raise AssertionError("analysis did not finish")
+E       AssertionError: analysis did not finish
+
+tests\test_analysis.py:50: AssertionError</failure></testcase><testcase classname="tests.test_captions" name="test_cues_respect_word_limits_sentences_and_pauses" time="0.000" /><testcase classname="tests.test_captions" name="test_cues_respect_character_limit" time="0.000" /><testcase classname="tests.test_captions" name="test_words_for_clip_clamps_to_edges" time="0.000" /><testcase classname="tests.test_captions" name="test_text_edits_keep_timing" time="0.000" /><testcase classname="tests.test_captions" name="test_wrap_balances_two_lines" time="0.000" /><testcase classname="tests.test_captions" name="test_srt_times_are_relative_to_the_clip" time="0.000" /><testcase classname="tests.test_captions" name="test_ass_karaoke_pop_and_escaping" time="0.000" /><testcase classname="tests.test_captions" name="test_style_overrides_are_validated" time="0.000" /><testcase classname="tests.test_captions" name="test_transcribe_edit_and_reset" time="126.486"><failure message="AssertionError: transcription did not finish">client = &lt;starlette.testclient.TestClient object at 0x000001C2BE2B3830&gt;
+clip = {'id': 1, 'source_id': 1, 'start_ms': 11500, 'end_ms': 20000, ...}
+
+    @needs_ffmpeg
+    @needs_tts
+    def test_transcribe_edit_and_reset(client, clip):
+        assert client.get(f"/clips/{clip['id']}/captions").json()["status"] == "needs_transcript"
+        res = client.post(f"/sources/{clip['source_id']}/transcribe", json={"model": "tiny"})
+        assert res.status_code == 202 and res.json()["task"] == "transcribe"
+&gt;       assert _wait_analysis(client, clip["source_id"])["status"] == "done"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_captions.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001C2BE2B3830&gt;
+source_id = 1
+
+    def _wait_analysis(client, source_id):
+        for _ in range(600):
+            a = client.get(f"/sources/{source_id}/analysis").json()
+            if a and a["status"] in ("done", "failed"):
+                return a
+            time.sleep(0.2)
+&gt;       raise AssertionError("transcription did not finish")
+E       AssertionError: transcription did not finish
+
+tests\test_captions.py:131: AssertionError</failure></testcase><testcase classname="tests.test_captions" name="test_style_endpoints" time="1.120" /><testcase classname="tests.test_captions" name="test_export_burns_captions_writes_srt_and_zips" time="125.249"><failure message="AssertionError: export did not finish">client = &lt;starlette.testclient.TestClient object at 0x000001C2BE1FD0A0&gt;
+clip = {'id': 1, 'source_id': 1, 'start_ms': 11500, 'end_ms': 20000, ...}
+tmp_path = WindowsPath('E:/Dev Tools/Temp/pytest-of-Nafee/pytest-3/test_export_burns_captions_wri0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001C2B94B9220&gt;
+
+    @needs_ffmpeg
+    @needs_tts
+    def test_export_burns_captions_writes_srt_and_zips(client, clip, tmp_path, monkeypatch):
+        # Not transcribed yet: the export transcribes by itself (with the small model, for test speed).
+        monkeypatch.setattr("app.analysis.transcribe.DEFAULT_MODEL", "tiny")
+        out = tmp_path / "out"
+&gt;       jobs = _export(client, clip["project_id"], clip["id"], out, captions="burn_srt", zip=True, aspects=["9:16", "1:1"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_captions.py:198: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001C2BE1FD0A0&gt;
+project_id = 1, clip_id = 1
+out = WindowsPath('E:/Dev Tools/Temp/pytest-of-Nafee/pytest-3/test_export_burns_captions_wri0/out')
+preset = {'output_dir': 'E:\\Dev Tools\\Temp\\pytest-of-Nafee\\pytest-3\\test_export_burns_captions_wri0\\out', 'hardware': False, 'default_framing': 'center', 'captions': 'burn_srt', ...}
+
+    def _export(client, project_id, clip_id, out, **preset):
+        preset = {"output_dir": str(out), "hardware": False, "default_framing": "center", **preset}
+        jobs = client.post("/exports", json={"clip_ids": [clip_id], "aspects": preset.pop("aspects", ["9:16"]), "preset": preset}).json()
+        ids = {j["id"] for j in jobs}
+        for _ in range(600):
+            done = [j for j in client.get(f"/projects/{project_id}/exports").json() if j["id"] in ids]
+            if all(j["status"] in ("done", "failed") for j in done):
+                assert all(j["status"] == "done" for j in done), [j["error"] for j in done]
+                return done
+            time.sleep(0.2)
+&gt;       raise AssertionError("export did not finish")
+E       AssertionError: export did not finish
+
+tests\test_captions.py:144: AssertionError</failure></testcase><testcase classname="tests.test_captions" name="test_concurrent_exports_transcribe_a_video_only_once" time="0.404" /><testcase classname="tests.test_clipfinder" name="test_sentences_split_on_punctuation_and_long_pauses" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_talking_candidates_are_whole_sentences_within_length" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_snap_never_cuts_into_words_and_prefers_nearby_scene_cuts" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_snap_with_touching_words_never_cuts_the_clips_own_words" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_keywords_hooks_and_weak_starts_affect_ranking" time="0.001" /><testcase classname="tests.test_clipfinder" name="test_silence_lowers_score" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_select_respects_count_overlap_and_existing_clips" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_auto_count_and_even_split" time="0.000" /><testcase classname="tests.test_clipfinder" name="test_find_clips_falls_back_without_speech" time="0.002" /><testcase classname="tests.test_clipfinder" name="test_find_clips_talking_end_to_end_and_titles" time="0.001" /><testcase classname="tests.test_clipfinder" name="test_next_alternate_skips_shown_and_overlapping" time="0.000" /><testcase classname="tests.test_download" name="test_known_errors_are_translated" time="0.000" /><testcase classname="tests.test_download" name="test_unknown_errors_are_cleaned_up" time="0.000" /><testcase classname="tests.test_editing" name="test_output_sizes" time="0.000" /><testcase classname="tests.test_editing" name="test_default_crop_is_centered_and_full_height" time="0.000" /><testcase classname="tests.test_editing" name="test_crop_pixels_even_inside_frame_and_exact_aspect" time="0.000" /><testcase classname="tests.test_editing" name="test_trim_window_selects_exact_frames" time="0.000" /><testcase classname="tests.test_editing" name="test_render_name_sanitizes" time="0.000" /><testcase classname="tests.test_editing" name="test_timeline_assets" time="0.543" /><testcase classname="tests.test_editing" name="test_clip_crud_and_validation" time="0.424" /><testcase classname="tests.test_editing" name="test_export_crop_and_fit" time="1.377" /><testcase classname="tests.test_editing" name="test_export_options_hevc_720_60fps" time="1.097" /><testcase classname="tests.test_editing" name="test_odd_length_clip_has_exact_frame_count[source-32]" time="0.651" /><testcase classname="tests.test_editing" name="test_odd_length_clip_has_exact_frame_count[60-64]" time="0.867" /><testcase classname="tests.test_editing" name="test_export_with_hardware_encoder_if_available" time="1.122" /><testcase classname="tests.test_editing" name="test_cut_lands_on_the_exact_frame" time="0.709" /><testcase classname="tests.test_editing" name="test_cancel_export_and_clear_finished" time="2.473" /><testcase classname="tests.test_engine" name="test_rejects_missing_token" time="0.025" /><testcase classname="tests.test_engine" name="test_rejection_carries_cors_headers" time="0.020" /><testcase classname="tests.test_engine" name="test_health_reports_db_and_ffmpeg" time="0.025" /><testcase classname="tests.test_engine" name="test_project_crud" time="0.042" /><testcase classname="tests.test_engine" name="test_blank_name_rejected" time="0.022" /><testcase classname="tests.test_engine" name="test_websocket_requires_token" time="0.029" /><testcase classname="tests.test_ingest" name="test_file_import_probes_and_builds_proxy" time="0.504" /><testcase classname="tests.test_ingest" name="test_link_import" time="0.991" /><testcase classname="tests.test_ingest" name="test_non_video_file_fails_with_message" time="0.151" /><testcase classname="tests.test_ingest" name="test_invalid_input_rejected[body0]" time="0.034" /><testcase classname="tests.test_ingest" name="test_invalid_input_rejected[body1]" time="0.048" /><testcase classname="tests.test_ingest" name="test_invalid_input_rejected[body2]" time="0.045" /><testcase classname="tests.test_ingest" name="test_invalid_input_rejected[body3]" time="0.040" /><testcase classname="tests.test_ingest" name="test_invalid_input_rejected[body4]" time="0.040" /><testcase classname="tests.test_ingest" name="test_cancel_then_retry" time="3.484" /><testcase classname="tests.test_ingest" name="test_delete_source_keeps_users_file" time="0.394" /><testcase classname="tests.test_ingest" name="test_interrupted_imports_marked_failed_on_startup" time="0.062" /><testcase classname="tests.test_probe" name="test_basic_fields" time="0.000" /><testcase classname="tests.test_probe" name="test_rotated_phone_video_reports_display_size" time="0.000" /><testcase classname="tests.test_probe" name="test_legacy_rotate_tag" time="0.000" /><testcase classname="tests.test_probe" name="test_variable_frame_rate_detected" time="0.000" /><testcase classname="tests.test_probe" name="test_cover_art_is_not_a_video" time="0.000" /><testcase classname="tests.test_probe" name="test_audio_only_rejected" time="0.000" /><testcase classname="tests.test_probe" name="test_no_audio" time="0.000" /><testcase classname="tests.test_reframe" name="test_choose_subject_follows_the_same_face" time="0.000" /><testcase classname="tests.test_reframe" name="test_still_subject_gives_a_locked_off_crop" time="0.000" /><testcase classname="tests.test_reframe" name="test_moving_subject_is_followed_smoothly_and_simplified" time="0.000" /><testcase classname="tests.test_reframe" name="test_speed_is_limited" time="0.000" /><testcase classname="tests.test_reframe" name="test_scene_cut_jumps_exactly_at_the_cut" time="0.000" /><testcase classname="tests.test_reframe" name="test_no_faces_keeps_the_default_crop" time="0.000" /><testcase classname="tests.test_reframe" name="test_gaps_hold_the_last_position" time="0.000" /><testcase classname="tests.test_reframe" name="test_long_clips_dont_hit_recursion_limits" time="0.019" /><testcase classname="tests.test_reframe" name="test_piecewise_expression_values" time="0.000" /><testcase classname="tests.test_reframe" name="test_smart_crop_follows_a_moving_subject" time="1.831" /><testcase classname="tests.test_reframe" name="test_smart_crop_jumps_at_a_scene_cut" time="1.730" /><testcase classname="tests.test_reframe" name="test_export_default_smart_tracks_automatically" time="1.156" /><testcase classname="tests.test_reframe" name="test_real_face_detector_runs_on_video_without_faces" time="0.644" /><testcase classname="tests.test_reframe" name="test_fit_styles[black-corner0]" time="1.068" /><testcase classname="tests.test_reframe" name="test_fit_styles[white-corner1]" time="1.013" /><testcase classname="tests.test_reframe" name="test_fit_blur_background_is_not_flat" time="1.061" /><testcase classname="tests.test_speaker" name="test_tracks_keep_their_ids_as_people_move" time="0.001" /><testcase classname="tests.test_speaker" name="test_camera_follows_whoever_talks_and_cuts_when_they_start" time="0.002" /><testcase classname="tests.test_speaker" name="test_brief_interjections_dont_cause_a_cut" time="0.001" /><testcase classname="tests.test_speaker" name="test_no_switching_during_silence" time="0.001" /><testcase classname="tests.test_speaker" name="test_shots_last_a_minimum_time" time="0.001" /><testcase classname="tests.test_speaker" name="test_passers_by_never_get_the_camera" time="0.001" /><testcase classname="tests.test_speaker" name="test_export_cuts_between_two_talking_people" time="2.503" /><testcase classname="tests.test_speaker" name="test_largest_mode_ignores_who_is_talking" time="0.604" /><testcase classname="tests.test_tighten" name="test_filler_detection" time="0.000" /><testcase classname="tests.test_tighten" name="test_plan_removes_fillers_and_long_quiet_pauses" time="0.000" /><testcase classname="tests.test_tighten" name="test_filler_with_no_duration_is_still_removed_and_counted_honestly" time="0.000" /><testcase classname="tests.test_tighten" name="test_loud_gaps_are_kept" time="0.000" /><testcase classname="tests.test_tighten" name="test_settings_switch_each_kind_off" time="0.000" /><testcase classname="tests.test_tighten" name="test_short_gaps_and_tiny_cuts_are_left_alone" time="0.000" /><testcase classname="tests.test_tighten" name="test_timemap_retimes_words_and_crop_path" time="0.000" /><testcase classname="tests.test_tighten" name="test_tightened_export_drops_filler_and_pause" time="1.120" /><testcase classname="tests.test_tighten" name="test_tighten_all_on_export_and_smart_framing" time="1.653" /></testsuite></testsuites>
