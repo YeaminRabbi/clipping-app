@@ -154,7 +154,7 @@ export function ExportDialog() {
                         type="checkbox"
                         checked={selected.has(clip.id)}
                         onChange={() => setSelected(toggle(selected, clip.id))}
-                        className="accent-[#7c5cff]"
+                        className="accent-accent"
                       />
                       <span className="min-w-0 flex-1 truncate text-sm">{clip.title}</span>
                       <span className="text-[11px] text-muted">{shortDuration(clip.end_ms - clip.start_ms)}</span>
@@ -172,7 +172,7 @@ export function ExportDialog() {
                     type="checkbox"
                     checked={aspects.has(a.key)}
                     onChange={() => setAspects(toggle(aspects, a.key))}
-                    className="accent-[#7c5cff]"
+                    className="accent-accent"
                   />
                   <span className="w-10 text-sm">{a.key}</span>
                   <span className="text-xs text-muted">{a.label}</span>
@@ -264,7 +264,7 @@ export function ExportDialog() {
                 type="checkbox"
                 checked={preset.zip}
                 onChange={(e) => setPreset({ ...preset, zip: e.target.checked })}
-                className="accent-[#7c5cff]"
+                className="accent-accent"
               />
               Also bundle everything into one ZIP file
             </label>
@@ -274,7 +274,7 @@ export function ExportDialog() {
                 type="checkbox"
                 checked={preset.tighten_all}
                 onChange={(e) => setPreset({ ...preset, tighten_all: e.target.checked })}
-                className="mt-1 accent-[#7c5cff]"
+                className="mt-1 accent-accent"
               />
               <span>
                 Tighten every clip: remove “um”/“uh” and shorten long pauses
@@ -287,7 +287,7 @@ export function ExportDialog() {
                 type="checkbox"
                 checked={preset.hardware}
                 onChange={(e) => setPreset({ ...preset, hardware: e.target.checked })}
-                className="accent-[#7c5cff]"
+                className="accent-accent"
               />
               Use the graphics card when available (faster)
             </label>

@@ -85,7 +85,7 @@ export function CaptionsPanel(props: Props) {
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-semibold tracking-wide text-muted uppercase">Caption style</h4>
           <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted">
-            <input type="checkbox" checked={props.showOverlay} onChange={(e) => props.onShowOverlay(e.target.checked)} className="accent-[#7c5cff]" />
+            <input type="checkbox" checked={props.showOverlay} onChange={(e) => props.onShowOverlay(e.target.checked)} className="accent-accent" />
             Show in preview
           </label>
         </div>
@@ -140,7 +140,7 @@ export function CaptionsPanel(props: Props) {
               onChange={(e) => setDraft({ ...overrides, size: Number(e.target.value) })}
               onPointerUp={() => save({ ...overrides, size: style.size })}
               onKeyUp={() => save({ ...overrides, size: style.size })}
-              className="accent-[#7c5cff]"
+              className="accent-accent"
             />
           </label>
           <label className="flex items-center justify-between gap-2">
@@ -173,7 +173,7 @@ export function CaptionsPanel(props: Props) {
             </div>
           </div>
           <label className="col-span-2 flex cursor-pointer items-center gap-2">
-            <input type="checkbox" checked={style.uppercase} onChange={(e) => save({ ...overrides, uppercase: e.target.checked })} className="accent-[#7c5cff]" />
+            <input type="checkbox" checked={style.uppercase} onChange={(e) => save({ ...overrides, uppercase: e.target.checked })} className="accent-accent" />
             ALL CAPS
           </label>
         </div>

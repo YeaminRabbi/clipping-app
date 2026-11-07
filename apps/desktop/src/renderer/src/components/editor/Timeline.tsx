@@ -121,7 +121,7 @@ export function Timeline(props: Props) {
     if (!waveform || waveform.length === 0 || !timeline) return
     const perSecond = timeline.peaks_per_second
     const mid = WAVE_H / 2
-    ctx.fillStyle = '#7c5cff'
+    ctx.fillStyle = getComputedStyle(canvas).getPropertyValue('--ui-primary').trim()
     for (let x = 0; x < viewW; x++) {
       const t0 = (scrollLeft + x) / pps
       const t1 = (scrollLeft + x + 1) / pps

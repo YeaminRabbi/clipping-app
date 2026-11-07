@@ -171,11 +171,11 @@ export function AutoClipDialog() {
             <Section title="How many clips?">
               <div className="flex items-center gap-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input type="radio" checked={prefs.auto} onChange={() => set({ auto: true })} className="accent-[#7c5cff]" />
+                  <input type="radio" checked={prefs.auto} onChange={() => set({ auto: true })} className="accent-accent" />
                   Auto
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input type="radio" checked={!prefs.auto} onChange={() => set({ auto: false })} className="accent-[#7c5cff]" />
+                  <input type="radio" checked={!prefs.auto} onChange={() => set({ auto: false })} className="accent-accent" />
                   Exactly
                 </label>
                 <input
@@ -229,11 +229,11 @@ export function AutoClipDialog() {
           <Section title="Part of the video">
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <label className="flex cursor-pointer items-center gap-2">
-                <input type="radio" checked={!useRange} onChange={() => setUseRange(false)} className="accent-[#7c5cff]" />
+                <input type="radio" checked={!useRange} onChange={() => setUseRange(false)} className="accent-accent" />
                 All of it
               </label>
               <label className="flex cursor-pointer items-center gap-2">
-                <input type="radio" checked={useRange} onChange={() => setUseRange(true)} className="accent-[#7c5cff]" />
+                <input type="radio" checked={useRange} onChange={() => setUseRange(true)} className="accent-accent" />
                 From
               </label>
               <input value={from} onChange={(e) => setFrom(e.target.value)} disabled={!useRange} className={`${inputClass} w-20 disabled:opacity-40`} />

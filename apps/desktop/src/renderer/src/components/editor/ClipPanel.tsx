@@ -100,11 +100,11 @@ function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Pro
       <h4 className="text-xs font-semibold tracking-wide text-muted uppercase">Tighten</h4>
       <div className="mt-2 flex flex-col gap-2 text-xs">
         <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={current.remove_fillers} onChange={(e) => update({ remove_fillers: e.target.checked })} className="accent-[#7c5cff]" />
+          <input type="checkbox" checked={current.remove_fillers} onChange={(e) => update({ remove_fillers: e.target.checked })} className="accent-accent" />
           Remove filler words (um, uh)
         </label>
         <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={current.remove_pauses} onChange={(e) => update({ remove_pauses: e.target.checked })} className="accent-[#7c5cff]" />
+          <input type="checkbox" checked={current.remove_pauses} onChange={(e) => update({ remove_pauses: e.target.checked })} className="accent-accent" />
           Shorten pauses longer than {secondsLabel(pause)}
         </label>
         {current.remove_pauses && (
@@ -117,7 +117,7 @@ function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Pro
             onChange={(e) => setPause(Number(e.target.value))}
             onPointerUp={() => update({ max_pause_ms: pause })}
             onKeyUp={() => update({ max_pause_ms: pause })}
-            className="accent-[#7c5cff]"
+            className="accent-accent"
           />
         )}
         {tighten && cutPlan?.status === 'ready' && (
@@ -179,7 +179,7 @@ function FitControls({ style, onChange, onCommit }: { style: FitStyle; onChange(
         onChange={(e) => onChange({ ...style, [key]: Number(e.target.value) })}
         onPointerUp={() => onCommit(style)}
         onKeyUp={() => onCommit(style)}
-        className="accent-[#7c5cff]"
+        className="accent-accent"
       />
     </label>
   )
