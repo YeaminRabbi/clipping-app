@@ -5,7 +5,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
-from .. import clips, sources
+from .. import clips, exports, sources
 from ..analysis import manager as analyses
 from ..analysis.finder import next_alternate
 from ..analysis.transcribe import MODELS
@@ -48,12 +48,13 @@ def analyze(source_id: int, body: AnalyzeRequest, request: Request) -> dict[str,
         src = _source_or_404(conn, source_id)
     if src["status"] != "ready":
         raise HTTPException(409, "This video is still importing")
-    if manager.is_running(source_id):
-        raise HTTPException(409, "Clips are already being found for this video")
     span_s = ((body.range_end_ms or src["duration_ms"]) - (body.range_start_ms or 0)) / 1000
     if span_s < body.min_seconds:
         raise HTTPException(422, "The part to analyze is shorter than the shortest clip length")
-    return manager.submit(source_id, body.model_dump())
+    try:
+        return manager.submit(source_id, body.model_dump())
+    except analyses.AlreadyRunning:
+        raise HTTPException(409, "Clips are already being found for this video") from None
 
 
 @router.get("/sources/{source_id}/analysis")
@@ -111,7 +112,7 @@ def replace_clip(clip_id: int, request: Request) -> dict[str, Any]:
         alt = next_alternate(result["pool"], taken, set(shown))
         if alt is None:
             raise HTTPException(409, "No other good moments are left. Try different settings to find more.")
-        conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        exports.delete_clips(conn, request.app.state.exports, [clip_id])
         cur = conn.execute(
             """INSERT INTO clips (source_id, start_ms, end_ms, title, status, score, score_reasons_json, sort_order, created_at)
                VALUES (?, ?, ?, ?, 'suggested', ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))""",

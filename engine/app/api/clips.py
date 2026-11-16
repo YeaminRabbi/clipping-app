@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -175,6 +176,8 @@ def set_format(clip_id: int, aspect_key: str, body: FormatUpdate, request: Reque
     with request.app.state.db.connect() as conn:
         clip = _clip_or_404(conn, clip_id)
         source = conn.execute("SELECT * FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
+        if body.mode == "smart":
+            _ready_source(conn, source["id"])  # tracking reads the proxy, which an import is still making
     if body.mode == "smart":
         # Tracking takes a few seconds; FastAPI runs this sync route in a worker thread.
         work_dir = sources.source_dir(request.app.state.settings, source["project_id"], source["id"])
@@ -184,12 +187,18 @@ def set_format(clip_id: int, aspect_key: str, body: FormatUpdate, request: Reque
         keyframes, options = result.keyframes, result.options(body.follow)
 
     with request.app.state.db.connect() as conn:
-        conn.execute(
-            """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json, options_json) VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT (clip_id, aspect) DO UPDATE SET mode = excluded.mode,
-                 crop_keyframes_json = excluded.crop_keyframes_json, options_json = excluded.options_json""",
-            (clip_id, aspect, body.mode, json.dumps(keyframes), json.dumps(options)),
-        )
+        # Tracking takes seconds; the clip may have been deleted (or replaced) meanwhile.
+        _clip_or_404(conn, clip_id)
+        try:
+            conn.execute(
+                """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json, options_json) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (clip_id, aspect) DO UPDATE SET mode = excluded.mode,
+                     crop_keyframes_json = excluded.crop_keyframes_json, options_json = excluded.options_json""",
+                (clip_id, aspect, body.mode, json.dumps(keyframes), json.dumps(options)),
+            )
+        except sqlite3.IntegrityError:
+            # Deleted between the check above and this write.
+            raise HTTPException(404, "Clip not found") from None
         conn.execute("UPDATE clips SET status = 'kept' WHERE id = ? AND status = 'suggested'", (clip_id,))
         clip = clips.get(conn, clip_id)
     _publish(request, "clip", clip)
@@ -200,7 +209,5 @@ def set_format(clip_id: int, aspect_key: str, body: FormatUpdate, request: Reque
 def delete_clip(clip_id: int, request: Request) -> None:
     with request.app.state.db.connect() as conn:
         clip = _clip_or_404(conn, clip_id)
-        for job_id in exports.active_job_ids(conn, clip_id=clip_id):
-            request.app.state.exports.cancel(job_id)
-        conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        exports.delete_clips(conn, request.app.state.exports, [clip_id])
     _publish(request, "clip_deleted", {"id": clip_id, "source_id": clip["source_id"]})

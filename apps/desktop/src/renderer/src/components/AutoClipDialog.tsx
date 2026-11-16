@@ -1,6 +1,8 @@
+import { LoaderCircle, Sparkles } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AnalysisMode, AnalyzeParams, SpeechModel } from '../lib/api'
 import { useApp } from '../store'
+import { Modal } from './Modal'
 
 const PREFS_KEY = 'clipping.autoClipPrefs'
 
@@ -141,16 +143,37 @@ export function AutoClipDialog() {
   const set = (patch: Partial<Prefs>) => setPrefs({ ...prefs, ...patch })
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onMouseDown={closeAutoClipDialog}>
-      <div
-        className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-base font-semibold">Find clips automatically</h2>
-          <p className="mt-0.5 truncate text-xs text-muted">{source.title}</p>
-        </div>
-
+    <Modal
+      size="md"
+      title="Find clips automatically"
+      description={<span className="block truncate">{source.title}</span>}
+      onClose={closeAutoClipDialog}
+      footer={
+        <>
+          <span className={`text-xs ${problem ? 'text-warning' : 'text-muted'}`}>
+            {problem ??
+              (suggestedCount > 0
+                ? `Replaces the ${suggestedCount} suggested clip${suggestedCount === 1 ? '' : 's'}${keptCount ? `; your ${keptCount} edited clip${keptCount === 1 ? ' is' : 's are'} kept` : ''}.`
+                : keptCount
+                  ? `Your ${keptCount} existing clip${keptCount === 1 ? ' is' : 's are'} kept; new clips won’t overlap them.`
+                  : 'Clips appear in the editor as suggestions you can trim, frame or replace.')}
+          </span>
+          <div className="flex shrink-0 gap-2">
+            <button onClick={closeAutoClipDialog} className="rounded-md px-4 py-2 text-sm text-muted hover:bg-panel-2 hover:text-ink">
+              Cancel
+            </button>
+            <button
+              onClick={() => void submit()}
+              disabled={busy || problem !== null}
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {busy ? 'Starting' : 'Find clips'}
+            </button>
+          </div>
+        </>
+      }
+    >
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
           <Section title="What kind of video is it?">
             <div className="grid grid-cols-3 gap-2">
@@ -273,30 +296,6 @@ export function AutoClipDialog() {
             </details>
           )}
         </div>
-
-        <div className="flex items-center justify-between gap-4 border-t border-line px-5 py-3">
-          <span className={`text-xs ${problem ? 'text-amber-300' : 'text-muted'}`}>
-            {problem ??
-              (suggestedCount > 0
-                ? `Replaces the ${suggestedCount} suggested clip${suggestedCount === 1 ? '' : 's'}${keptCount ? `; your ${keptCount} edited clip${keptCount === 1 ? ' is' : 's are'} kept` : ''}.`
-                : keptCount
-                  ? `Your ${keptCount} existing clip${keptCount === 1 ? ' is' : 's are'} kept; new clips won’t overlap them.`
-                  : 'Clips appear in the editor as suggestions you can trim, frame or replace.')}
-          </span>
-          <div className="flex shrink-0 gap-2">
-            <button onClick={closeAutoClipDialog} className="rounded-md px-4 py-2 text-sm text-muted hover:bg-panel-2">
-              Cancel
-            </button>
-            <button
-              onClick={() => void submit()}
-              disabled={busy || problem !== null}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
-            >
-              {busy ? 'Starting…' : 'Find clips'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -2,12 +2,13 @@
 
 import json
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from .. import clips, ffmpeg, sources
+from .. import clips, exports, ffmpeg, sources
 from ..captions.service import save_transcript, transcript_lock
 from ..config import Settings
 from ..db import Database
@@ -47,14 +48,22 @@ def get(conn, source_id: int) -> dict[str, Any] | None:
     return to_dict(row) if row else None
 
 
+class AlreadyRunning(Exception):
+    """An analysis of this video is already queued or running."""
+
+
 class AnalysisManager:
-    def __init__(self, settings: Settings, db: Database, events: EventHub):
+    def __init__(self, settings: Settings, db: Database, events: EventHub, export_manager: "exports.ExportManager"):
         self.settings = settings
         self.db = db
         self.events = events
+        # Replacing suggested clips must stop their exports first (see exports.delete_clips).
+        self.export_manager = export_manager
         # Transcription uses every core; one analysis at a time keeps the app responsive.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="analysis")
         self.tokens: dict[int, CancelToken] = {}
+        # Makes "is one running? if not, start one" a single step for concurrent requests.
+        self._submit_lock = threading.Lock()
 
     def start(self) -> None:
         with self.db.connect() as conn:
@@ -68,13 +77,27 @@ class AnalysisManager:
             token.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)
 
-    def is_running(self, source_id: int) -> bool:
-        return source_id in self.tokens
-
     def submit(self, source_id: int, params: dict[str, Any]) -> dict[str, Any]:
         """Queue an analysis. Mode "transcribe" only transcribes (for captions) and keeps the previous
         clip-finding results, so "Replace this clip" still works afterwards."""
         transcribe_only = params["mode"] == "transcribe"
+        token = CancelToken()
+        with self._submit_lock:
+            if source_id in self.tokens:
+                raise AlreadyRunning()
+            self.tokens[source_id] = token
+        try:
+            analysis = self._queue_row(source_id, params, transcribe_only)
+            # Announce "queued" before the worker can start and announce "running".
+            self.events.emit("analysis", analysis)
+            # Fails once the engine is shutting down; the token must not outlive the request then.
+            self.executor.submit(self._run, source_id, params, token)
+        except BaseException:
+            self.tokens.pop(source_id, None)
+            raise
+        return analysis
+
+    def _queue_row(self, source_id: int, params: dict[str, Any], transcribe_only: bool) -> dict[str, Any]:
         with self.db.connect() as conn:
             conn.execute(
                 f"""INSERT INTO analyses (source_id, status, stage, progress, settings_json, result_json, error, task)
@@ -84,12 +107,7 @@ class AnalysisManager:
                      {"" if transcribe_only else ", settings_json = excluded.settings_json, result_json = NULL"}""",
                 (source_id, json.dumps({} if transcribe_only else params), "transcribe" if transcribe_only else "find_clips"),
             )
-            analysis = get(conn, source_id)
-        token = CancelToken()
-        self.tokens[source_id] = token
-        self.events.emit("analysis", analysis)
-        self.executor.submit(self._run, source_id, params, token)
-        return analysis
+            return get(conn, source_id)
 
     def cancel(self, source_id: int) -> bool:
         token = self.tokens.get(source_id)
@@ -228,7 +246,7 @@ class AnalysisManager:
             result = find_clips(settings, sig, duration, [(r["start_ms"], r["end_ms"]) for r in kept])
             token.raise_if_cancelled()
             removed = [r["id"] for r in conn.execute("SELECT id FROM clips WHERE source_id = ? AND status = 'suggested'", (source_id,))]
-            conn.execute("DELETE FROM clips WHERE source_id = ? AND status = 'suggested'", (source_id,))
+            exports.delete_clips(conn, self.export_manager, removed)
             base = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM clips WHERE source_id = ?", (source_id,)).fetchone()[0]
             created = []
             for i, cand in enumerate(result.chosen):

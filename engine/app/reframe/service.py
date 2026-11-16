@@ -17,7 +17,6 @@ from .track import camera_path, choose_subject
 
 # Track a little beyond the clip so small trims don't need re-tracking.
 MARGIN_MS = 3000
-FOLLOW_MODES = ("speaker", "largest")
 
 
 @dataclass

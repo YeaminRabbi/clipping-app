@@ -1,7 +1,7 @@
 import { useApp } from '../store'
 
 const LABELS = {
-  starting: { text: 'Engine starting…', dot: 'bg-amber-400 animate-pulse' },
+  starting: { text: 'Engine starting', dot: 'bg-amber-400 animate-pulse' },
   ready: { text: 'Engine ready', dot: 'bg-emerald-400' },
   error: { text: 'Engine error', dot: 'bg-red-500' },
   stopped: { text: 'Engine stopped', dot: 'bg-zinc-500' }

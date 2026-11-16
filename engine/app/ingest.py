@@ -32,6 +32,8 @@ class IngestManager:
         self.db = db
         self.events = events
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ingest")
+        # Startup backfill of timeline assets runs on its own worker so it never delays new imports.
+        self.backfill = ThreadPoolExecutor(max_workers=1, thread_name_prefix="timeline")
         self.tokens: dict[int, CancelToken] = {}
         self._asset_locks: dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
@@ -44,11 +46,17 @@ class IngestManager:
                 f"UPDATE sources SET status = 'failed', error = ? WHERE status IN ({placeholders})",
                 ("Import was interrupted because the app closed", *sources.ACTIVE_STATUSES),
             )
+            ready = conn.execute("SELECT id, project_id FROM sources WHERE status = 'ready'").fetchall()
+        # Videos imported before timeline assets existed get them here, off the request path.
+        for row in ready:
+            if not sources.timeline_assets_ready(self.source_dir(row["project_id"], row["id"])):
+                self.backfill.submit(self._backfill_timeline_assets, row["id"])
 
     def shutdown(self) -> None:
         for token in self.tokens.values():
             token.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)
+        self.backfill.shutdown(wait=False, cancel_futures=True)
 
     def source_dir(self, project_id: int, source_id: int) -> Path:
         return sources.source_dir(self.settings, project_id, source_id)
@@ -105,20 +113,33 @@ class IngestManager:
                 try:
                     make_waveform(tools.ffmpeg.path, proxy, waveform, token)
                 except MediaError as err:
+                    # Saved as no waveform (like a silent video), so it isn't retried and failed on every start.
                     log.warning("Waveform failed for %s: %s", work_dir, err)
+                    waveform.write_bytes(b"")
 
     def _asset_lock(self, work_dir: Path) -> threading.Lock:
         with self._locks_guard:
             return self._asset_locks.setdefault(str(work_dir), threading.Lock())
 
-    def ensure_timeline_assets(self, source: dict[str, Any]) -> Path:
-        """Generate missing timeline assets on demand (for sources imported before they existed)."""
-        work_dir = self.source_dir(source["project_id"], source["id"])
-        if not ((work_dir / "thumbs.jpg").is_file() and (work_dir / "waveform.bin").is_file()):
+    def _backfill_timeline_assets(self, source_id: int) -> None:
+        """Make missing timeline assets for an already imported video, then announce it so the editor
+        picks them up."""
+        with self.db.connect() as conn:
+            row = conn.execute("SELECT * FROM sources WHERE id = ? AND status = 'ready'", (source_id,)).fetchone()
+        if row is None:
+            return
+        work_dir = self.source_dir(row["project_id"], source_id)
+        try:
             self._make_timeline_assets(
-                work_dir, source["duration_ms"], source["width"], source["height"], source["has_audio"], CancelToken()
+                work_dir, row["duration_ms"], row["width"], row["height"], bool(row["has_audio"]), CancelToken()
             )
-        return work_dir
+        except Exception:
+            log.exception("Timeline assets failed for source %s", source_id)
+            return
+        with self.db.connect() as conn:
+            source = sources.get(conn, source_id)
+        if source:
+            self.events.emit("source", source)
 
     def _release(self, source_id: int, token: CancelToken) -> None:
         # A retry may already have registered a new token for this source; leave that one alone.

@@ -1,3 +1,4 @@
+import { FolderOpen, Link } from 'lucide-react'
 import { useState, type DragEvent, type FormEvent } from 'react'
 import { useApp } from '../store'
 
@@ -48,7 +49,7 @@ export function ImportPanel() {
     >
       <h2 className="text-sm font-semibold">Import a video</h2>
       <p className="mt-1 text-xs text-muted">
-        Paste a link (YouTube, Vimeo, X, a direct .mp4 link…) or choose files from your computer. You can also drop
+        Paste a link (YouTube, Vimeo, X or a direct .mp4 link) or choose files from your computer. You can also drop
         files or links here.
       </p>
 
@@ -56,15 +57,16 @@ export function ImportPanel() {
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
+          placeholder="https://"
           disabled={!ready || busy}
           className="flex-1 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={!ready || busy || !url.trim()}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
         >
+          <Link size={16} aria-hidden />
           Import link
         </button>
         <span className="self-center px-1 text-xs text-muted">or</span>
@@ -72,9 +74,10 @@ export function ImportPanel() {
           type="button"
           onClick={() => void browse()}
           disabled={!ready}
-          className="rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-panel-2 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-panel-2 disabled:opacity-50"
         >
-          Choose files…
+          <FolderOpen size={16} aria-hidden />
+          Choose files
         </button>
       </form>
       <p className="mt-3 text-[11px] text-muted">

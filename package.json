@@ -14,6 +14,7 @@
     "test:engine": "node scripts/run-engine-tests.mjs",
     "build:engine": "node scripts/build-engine.mjs",
     "dist": "npm run build:engine && npm --workspace apps/desktop run dist",
-    "release": "npm run build:engine && npm --workspace apps/desktop run release"
+    "release": "npm run build:engine && npm --workspace apps/desktop run release",
+    "clip": "node scripts/clip.mjs"
   }
 }

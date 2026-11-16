@@ -43,13 +43,28 @@ def to_dict(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+TIMELINE_ASSETS = ("thumbs.jpg", "waveform.bin")
+
+
+def timeline_assets_ready(work_dir: Path) -> bool:
+    return all((work_dir / name).is_file() for name in TIMELINE_ASSETS)
+
+
 def _timeline(row: sqlite3.Row) -> dict[str, Any] | None:
-    if row["status"] != "ready" or not (row["duration_ms"] and row["width"] and row["height"]):
+    """Timeline assets that exist (each URL is null until its file does). They sit next to the proxy
+    and are made by the import job, or in the background at startup for videos imported before
+    they existed."""
+    if row["status"] != "ready" or not (row["duration_ms"] and row["width"] and row["height"]) or not row["proxy_path"]:
+        return None
+    work_dir = Path(row["proxy_path"]).parent
+    thumbs = (work_dir / "thumbs.jpg").is_file()
+    waveform = (work_dir / "waveform.bin").is_file()
+    if not (thumbs or waveform):
         return None
     return {
-        "thumbs_url": f"/media/sources/{row['id']}/thumbs",
+        "thumbs_url": f"/media/sources/{row['id']}/thumbs" if thumbs else None,
         "thumbs": thumb_layout(row["duration_ms"], row["width"], row["height"]).as_dict(),
-        "waveform_url": f"/media/sources/{row['id']}/waveform",
+        "waveform_url": f"/media/sources/{row['id']}/waveform" if waveform else None,
         "peaks_per_second": PEAKS_PER_SECOND,
     }
 

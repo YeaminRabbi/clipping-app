@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight, Plus, Shuffle, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { DEFAULT_TIGHTEN, type Clip, type CutPlan, type FitStyle, type FollowMode, type FramingMode, type SmartOptions, type Tighten } from '../../lib/api'
 import { useApp } from '../../store'
@@ -50,7 +51,7 @@ function SmartInfo({ tracking, faceRatio, stale, onRetrack, smart, onFollow }: P
     return (
       <p className="mt-2 flex items-center gap-2 text-xs text-muted">
         <span className="size-3 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        Finding faces…
+        Finding faces
       </p>
     )
   }
@@ -141,7 +142,7 @@ function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Pro
               disabled={transcribing}
               className="shrink-0 rounded bg-accent px-2 py-1 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
-              {transcribing ? 'Transcribing…' : 'Transcribe'}
+              {transcribing ? 'Transcribing' : 'Transcribe'}
             </button>
           </div>
         )}
@@ -247,11 +248,21 @@ export function ClipPanel(props: Props) {
 
   const nudge = (edge: 'start' | 'end') => (
     <span className="flex">
-      <button onClick={() => props.onNudge(edge, -1)} className="rounded-l border border-line px-1.5 hover:bg-panel" title="1 frame earlier">
-        ‹
+      <button
+        onClick={() => props.onNudge(edge, -1)}
+        className="grid place-items-center rounded-l border border-line px-1 hover:bg-panel"
+        title="1 frame earlier"
+        aria-label={`Move ${edge} 1 frame earlier`}
+      >
+        <ChevronLeft size={12} aria-hidden />
       </button>
-      <button onClick={() => props.onNudge(edge, 1)} className="rounded-r border border-l-0 border-line px-1.5 hover:bg-panel" title="1 frame later">
-        ›
+      <button
+        onClick={() => props.onNudge(edge, 1)}
+        className="grid place-items-center rounded-r border border-l-0 border-line px-1 hover:bg-panel"
+        title="1 frame later"
+        aria-label={`Move ${edge} 1 frame later`}
+      >
+        <ChevronRight size={12} aria-hidden />
       </button>
     </span>
   )
@@ -265,17 +276,19 @@ export function ClipPanel(props: Props) {
         <div className="flex gap-1.5">
           <button
             onClick={props.onAutoClip}
-            className="rounded-md border border-accent/60 px-2.5 py-1.5 text-xs font-medium hover:bg-accent/20"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent/60 px-2.5 py-1.5 text-xs font-medium hover:bg-accent/20"
             title="Find the best moments automatically"
           >
+            <Sparkles size={14} aria-hidden />
             Find clips
           </button>
           <button
             onClick={props.onAdd}
-            className="rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
             title="Add clip (N)"
           >
-            {selected === null && range ? 'Add marked' : '+ New'}
+            <Plus size={14} aria-hidden />
+            {selected === null && range ? 'Add marked' : 'New'}
           </button>
         </div>
       </div>
@@ -426,16 +439,18 @@ export function ClipPanel(props: Props) {
               {props.canReplace && (
                 <button
                   onClick={props.onReplace}
-                  className="rounded-md border border-line px-2.5 py-1 text-xs hover:bg-panel-2"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs hover:bg-panel-2"
                   title="Swap for the next-best moment"
                 >
+                  <Shuffle size={14} aria-hidden />
                   Replace with another
                 </button>
               )}
               <button
                 onClick={props.onDelete}
-                className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-red-950/60 hover:text-red-300"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted border border-transparent hover:border-danger-border hover:bg-red-950/60 hover:text-red-300"
               >
+                <Trash2 size={14} aria-hidden />
                 Delete clip
               </button>
             </div>

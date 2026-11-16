@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CaptionCue, CaptionOverrides, CaptionStyle, CaptionTemplate, ClipCaptions, SpeechModel } from '../../lib/api'
 import { useApp } from '../../store'
@@ -55,8 +56,13 @@ function CueRow({ cue, clipStart, onEdit, onSeek }: { cue: CaptionCue; clipStart
         }}
         className="min-w-0 flex-1 rounded border border-transparent bg-panel-2 px-2 py-1 text-xs outline-none hover:border-line focus:border-accent"
       />
-      <button onClick={() => onEdit('')} className="px-1 text-xs text-muted hover:text-red-300" title="Remove this caption">
-        ×
+      <button
+        onClick={() => onEdit('')}
+        className="grid place-items-center px-1 text-muted hover:text-red-300"
+        title="Remove this caption"
+        aria-label="Remove this caption"
+      >
+        <X size={14} aria-hidden />
       </button>
     </li>
   )
@@ -71,7 +77,7 @@ export function CaptionsPanel(props: Props) {
   const [model, setModel] = useState<SpeechModel>('base')
   const [draft, setDraft] = useState<CaptionOverrides | null>(null)
 
-  if (!templates || !projectStyle) return <p className="text-xs text-muted">Loading…</p>
+  if (!templates || !projectStyle) return <p className="text-xs text-muted">Loading</p>
   const overrides = draft ?? projectStyle.overrides
   const style: CaptionStyle = { ...projectStyle.style, ...overrides }
   const save = (next: CaptionOverrides) => {
@@ -193,7 +199,7 @@ export function CaptionsPanel(props: Props) {
           <AnalysisStatus sourceId={sourceId} compact />
         </div>
         {loading && !captions ? (
-          <p className="mt-2 text-xs text-muted">Loading…</p>
+          <p className="mt-2 text-xs text-muted">Loading</p>
         ) : captions?.status === 'needs_transcript' ? (
           <div className="mt-2 rounded-md border border-line p-3 text-xs">
             <p className="text-muted">Captions come from the speech in the video, which hasn’t been transcribed yet.</p>
@@ -215,7 +221,7 @@ export function CaptionsPanel(props: Props) {
                 disabled={transcribing}
                 className="flex-1 rounded-md bg-accent px-3 py-1.5 font-medium hover:bg-accent-hover disabled:opacity-50"
               >
-                {transcribing ? 'Transcribing…' : 'Transcribe speech'}
+                {transcribing ? 'Transcribing' : 'Transcribe speech'}
               </button>
             </div>
           </div>

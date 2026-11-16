@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
 import { log, logsDir } from './log'
@@ -10,6 +10,16 @@ import type { EngineStatus } from '../shared/types'
 const STARTUP_TIMEOUT_MS = 60_000
 const MAX_LOG_LINES = 200
 const READY_PATTERN = /ENGINE_READY port=(\d+)/
+
+/**
+ * Where the running engine's address and token are written, so command-line tools (scripts/clip.mjs,
+ * used by coding agents) can drive the same engine the window shows. The file is in the user's own
+ * app-data folder and is removed when the engine stops. Only development builds write it, unless
+ * CLIP_ENABLE_BRIDGE=1 is set.
+ */
+export function connectionFile(): string {
+  return join(app.getPath('userData'), 'engine.json')
+}
 
 interface EngineCommand {
   command: string
@@ -50,8 +60,34 @@ export class EngineProcess {
 
   private update(patch: Partial<EngineStatus>): void {
     this.status = { ...this.status, ...patch }
+    this.publishConnection()
     const snapshot = this.getStatus()
     for (const listener of this.listeners) listener(snapshot)
+  }
+
+  private publishConnection(): void {
+    // Development builds only, unless asked for: writing the token to disk lets any process of this
+    // user drive the engine, which installed copies get no benefit from.
+    if (app.isPackaged && process.env.CLIP_ENABLE_BRIDGE !== '1') return
+    const { state, url, token } = this.status
+    try {
+      if (state === 'ready' && url && token) {
+        const info = {
+          url,
+          token,
+          app_pid: process.pid,
+          engine_pid: this.child?.pid ?? null,
+          packaged: app.isPackaged,
+          // The real Videos folder (it can be redirected, e.g. to OneDrive), for the default export folder.
+          videos_dir: app.getPath('videos')
+        }
+        writeFileSync(connectionFile(), JSON.stringify(info, null, 2), { encoding: 'utf8', mode: 0o600 })
+      } else {
+        rmSync(connectionFile(), { force: true })
+      }
+    } catch (err) {
+      log('warn', `Could not update ${connectionFile()}: ${String(err)}`)
+    }
   }
 
   private log(chunk: string): void {

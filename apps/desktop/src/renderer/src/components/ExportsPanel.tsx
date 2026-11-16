@@ -1,8 +1,9 @@
+import { FolderOpen, FolderSearch, ListX, Play, RotateCcw, X } from 'lucide-react'
 import type { ExportJob } from '../lib/api'
 import { useApp } from '../store'
 
 const STATUS_LABEL: Record<ExportJob['status'], string> = {
-  queued: 'Waiting…',
+  queued: 'Waiting',
   rendering: 'Rendering',
   done: 'Done',
   failed: 'Failed',
@@ -44,16 +45,18 @@ export function ExportsPanel() {
           {folder && (
             <button
               onClick={() => void window.clipping.files.openPath(folder)}
-              className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2 hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2 hover:text-white"
             >
+              <FolderOpen size={14} aria-hidden />
               Open folder
             </button>
           )}
           {jobs.length > active && (
             <button
               onClick={() => void clearFinishedExports()}
-              className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2 hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2 hover:text-white"
             >
+              <ListX size={14} aria-hidden />
               Clear finished
             </button>
           )}
@@ -67,7 +70,11 @@ export function ExportsPanel() {
         >
           <span className="min-w-0 truncate">{b.error ?? `ZIP ready: ${b.zip_path?.split(/[\\/]/).pop()}`}</span>
           {b.zip_path && (
-            <button onClick={() => void window.clipping.files.showInFolder(b.zip_path!)} className="shrink-0 text-white/80 hover:text-white">
+            <button
+              onClick={() => void window.clipping.files.showInFolder(b.zip_path!)}
+              className="inline-flex shrink-0 items-center gap-1.5 text-white/80 hover:text-white"
+            >
+              <FolderSearch size={14} aria-hidden />
               Show
             </button>
           )}
@@ -93,12 +100,14 @@ export function ExportsPanel() {
                   {job.srt_path && ' · .srt'}
                 </span>
                 {running && (
-                  <button onClick={() => void cancelExport(job.id)} className="rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white">
+                  <button onClick={() => void cancelExport(job.id)} className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white">
+                    <X size={14} aria-hidden />
                     Cancel
                   </button>
                 )}
                 {(job.status === 'failed' || job.status === 'cancelled') && (
-                  <button onClick={() => void retryExport(job.id)} className="rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white">
+                  <button onClick={() => void retryExport(job.id)} className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white">
+                    <RotateCcw size={14} aria-hidden />
                     Retry
                   </button>
                 )}
@@ -106,14 +115,16 @@ export function ExportsPanel() {
                   <>
                     <button
                       onClick={() => void window.clipping.files.openPath(job.output_path!)}
-                      className="rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white"
+                      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white"
                     >
+                      <Play size={14} aria-hidden />
                       Play
                     </button>
                     <button
                       onClick={() => void window.clipping.files.showInFolder(job.output_path!)}
-                      className="rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white"
+                      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs text-muted hover:bg-panel hover:text-white"
                     >
+                      <FolderSearch size={14} aria-hidden />
                       Show
                     </button>
                   </>

@@ -161,7 +161,6 @@ class Database:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
     @contextmanager
@@ -179,6 +178,8 @@ class Database:
 
     def migrate(self) -> int:
         with self.connect() as conn:
+            # WAL is stored in the database file, so setting it once at startup covers every later connection.
+            conn.execute("PRAGMA journal_mode = WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             for i in range(version, len(MIGRATIONS)):
                 conn.executescript(MIGRATIONS[i])

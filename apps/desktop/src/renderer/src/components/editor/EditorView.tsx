@@ -1,3 +1,4 @@
+import { ArrowLeft, Crop as CropIcon, Download, Eye, Keyboard, Pause, Play, StepBack, StepForward, Volume2, VolumeX } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_FIT,
@@ -14,6 +15,7 @@ import { CaptionsPanel } from './CaptionsPanel'
 import { aspectRatio, cropAt, defaultCrop } from '../../lib/aspects'
 import { frameToMs, msToFrame, timecode } from '../../lib/time'
 import { useApp } from '../../store'
+import { confirmAction } from '../../lib/confirm'
 import { ClipPanel } from './ClipPanel'
 import { Stage } from './Stage'
 import { Timeline, type Range } from './Timeline'
@@ -22,6 +24,9 @@ const DEFAULT_CLIP_MS = 15_000
 const PLAYBACK_RATES = [1, 2, 4]
 
 interface HistoryEntry {
+  clipId: number
+  /** The clip's deletion count when this was recorded; see AppState.clipDeletions. */
+  epoch: number
   undo(): Promise<unknown>
   redo(): Promise<unknown>
 }
@@ -62,6 +67,15 @@ export function EditorView() {
   const redoStack = useRef<HistoryEntry[]>([])
 
   const selected = clips.find((c) => c.id === selectedId) ?? null
+  // Deselect when the selected clip is deleted, even if a new clip then gets its id (SQLite reuses them).
+  const selectedDeletions = useApp((s) => (selectedId === null ? 0 : (s.clipDeletions[selectedId] ?? 0)))
+  const selectedEpoch = useRef(0)
+  useEffect(() => {
+    selectedEpoch.current = selectedId === null ? 0 : (useApp.getState().clipDeletions[selectedId] ?? 0)
+  }, [selectedId])
+  useEffect(() => {
+    if (selectedId !== null && selectedDeletions !== selectedEpoch.current) setSelectedId(null)
+  }, [selectedId, selectedDeletions])
   const currentMs = frameToMs(frame, fps)
   const range: Range | null = dragRange ?? (selected ? { start: selected.start_ms, end: selected.end_ms } : draft)
   const format = selected?.formats[aspect]
@@ -124,11 +138,24 @@ export function EditorView() {
     }
   }
 
+  const resetCaptions = async () => {
+    if (!client || !selected) return
+    try {
+      setCaptions(await client.resetCaptions(selected.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   useEffect(() => {
-    if (!client || !source?.timeline) return
+    const url = source?.timeline?.waveform_url
+    if (!client || !url) {
+      setWaveform(null)
+      return
+    }
     let cancelled = false
     client
-      .waveform(source.timeline.waveform_url)
+      .waveform(url)
       .then((data) => !cancelled && setWaveform(data))
       .catch(() => !cancelled && setWaveform(null))
     return () => {
@@ -186,8 +213,10 @@ export function EditorView() {
     } else video.pause()
   }, [])
 
-  const pushHistory = (entry: HistoryEntry) => {
-    undoStack.current.push(entry)
+  const deletionsOf = (clipId: number): number => useApp.getState().clipDeletions[clipId] ?? 0
+
+  const pushHistory = (clipId: number, entry: Pick<HistoryEntry, 'undo' | 'redo'>) => {
+    undoStack.current.push({ ...entry, clipId, epoch: deletionsOf(clipId) })
     if (undoStack.current.length > 100) undoStack.current.shift()
     redoStack.current = []
   }
@@ -198,7 +227,7 @@ export function EditorView() {
       const after = { start_ms: next.start, end_ms: next.end }
       if (before.start_ms === after.start_ms && before.end_ms === after.end_ms) return
       const saved = await updateClip(clip.id, after)
-      if (saved) pushHistory({ undo: () => updateClip(clip.id, before), redo: () => updateClip(clip.id, after) })
+      if (saved) pushHistory(clip.id, { undo: () => updateClip(clip.id, before), redo: () => updateClip(clip.id, after) })
       // Trimmed past the part that was tracked: follow faces over the new range too.
       const fmt = saved?.formats[aspect]
       if (saved && fmt?.mode === 'smart' && fmt.stale) {
@@ -222,7 +251,7 @@ export function EditorView() {
     setTracking(false)
     if (saved) {
       const a = aspect
-      pushHistory({
+      pushHistory(clip.id, {
         undo: () => setClipFormat(clip.id, a, beforeMode, beforeMode === 'manual' ? beforeCrop : null, beforeFit),
         redo: () => setClipFormat(clip.id, a, nextMode, nextCrop, nextFit)
       })
@@ -303,21 +332,38 @@ export function EditorView() {
   }
 
   const removeSelected = async () => {
-    if (selected && confirm(`Delete "${selected.title}"?`)) {
+    if (!selected) return
+    const ok = await confirmAction({
+      title: `Delete "${selected.title}"?`,
+      message: 'The clip and its framing and caption edits are removed. Videos already exported stay where they are.',
+      confirmLabel: 'Delete clip',
+      danger: true
+    })
+    if (ok) {
       await deleteClip(selected.id)
       setSelectedId(null)
     }
   }
 
+  /**
+   * Next entry whose clip still exists. Entries for a deleted clip are dropped: SQLite can give its
+   * id to a new clip, and undoing would then change that unrelated clip.
+   */
+  const nextLive = (stack: HistoryEntry[]): HistoryEntry | undefined => {
+    let entry = stack.pop()
+    while (entry && entry.epoch !== deletionsOf(entry.clipId)) entry = stack.pop()
+    return entry
+  }
+
   const undo = async () => {
-    const entry = undoStack.current.pop()
+    const entry = nextLive(undoStack.current)
     if (entry) {
       await entry.undo()
       redoStack.current.push(entry)
     }
   }
   const redo = async () => {
-    const entry = redoStack.current.pop()
+    const entry = nextLive(redoStack.current)
     if (entry) {
       await entry.redo()
       undoStack.current.push(entry)
@@ -349,7 +395,8 @@ export function EditorView() {
       else if (key === 'end') seekMs(range ? range.end - 1000 / fps : durationMs)
       else if (key === 'i') mark('in')
       else if (key === 'o') mark('out')
-      else if (key === 'n' || key === 'enter') void addClip()
+      // Not Enter: it must keep activating whichever button has keyboard focus.
+      else if (key === 'n') void addClip()
       else if (key === 'delete' || key === 'backspace') void removeSelected()
       else if (key === 'escape') select(null)
       else if (key === 'p') setView((v) => (v === 'edit' ? 'preview' : 'edit'))
@@ -361,23 +408,41 @@ export function EditorView() {
   })
 
   if (!source || !client || !source.proxy_url) {
-    return <div className="grid h-full place-items-center text-sm text-muted">This video isn’t ready for editing.</div>
+    return (
+      <div className="grid h-full place-items-center text-sm text-muted">
+        <div className="flex flex-col items-center gap-3">
+          <span>This video isn’t ready for editing.</span>
+          <button
+            onClick={closeEditor}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2"
+          >
+            <ArrowLeft size={14} aria-hidden />
+            Back
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-line px-4 py-2">
-        <button onClick={closeEditor} className="rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
-          ← Back
+        <button
+          onClick={closeEditor}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2"
+        >
+          <ArrowLeft size={14} aria-hidden />
+          Back
         </button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{source.title}</h2>
         <ShortcutsHint />
         <button
           onClick={() => openExportDialog(clips.map((c) => c.id))}
           disabled={clips.length === 0}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
         >
-          Export clips…
+          <Download size={14} aria-hidden />
+          Export clips
         </button>
       </div>
 
@@ -400,14 +465,29 @@ export function EditorView() {
             onTogglePlay={togglePlay}
           />
           <div className="flex items-center gap-2 border-t border-line bg-panel px-3 py-2 text-xs">
-            <button onClick={() => seekFrame(frame - 1)} className="rounded px-2 py-1 hover:bg-panel-2" title="Previous frame (←)">
-              ⏮
+            <button
+              onClick={() => seekFrame(frame - 1)}
+              className="grid place-items-center rounded px-2 py-1 hover:bg-panel-2"
+              title="Previous frame (←)"
+              aria-label="Previous frame"
+            >
+              <StepBack size={14} aria-hidden />
             </button>
-            <button onClick={togglePlay} className="w-16 rounded bg-panel-2 px-2 py-1 hover:bg-line" title="Play / pause (Space)">
+            <button
+              onClick={togglePlay}
+              className="inline-flex w-20 items-center justify-center gap-1.5 rounded bg-panel-2 px-2 py-1 hover:bg-line"
+              title="Play / pause (Space)"
+            >
+              {playing ? <Pause size={14} aria-hidden /> : <Play size={14} aria-hidden />}
               {playing ? 'Pause' : 'Play'}
             </button>
-            <button onClick={() => seekFrame(frame + 1)} className="rounded px-2 py-1 hover:bg-panel-2" title="Next frame (→)">
-              ⏭
+            <button
+              onClick={() => seekFrame(frame + 1)}
+              className="grid place-items-center rounded px-2 py-1 hover:bg-panel-2"
+              title="Next frame (→)"
+              aria-label="Next frame"
+            >
+              <StepForward size={14} aria-hidden />
             </button>
             <span className="ml-2 font-mono text-[13px]">{timecode(currentMs, fps)}</span>
             <span className="text-muted">/ {timecode(durationMs, fps)}</span>
@@ -420,7 +500,8 @@ export function EditorView() {
             <button onClick={() => mark('out')} className="rounded border border-line px-2 py-1 hover:bg-panel-2" title="Mark Out (O)">
               Mark Out
             </button>
-            <button onClick={() => setMuted((m) => !m)} className="rounded px-2 py-1 text-muted hover:bg-panel-2">
+            <button onClick={() => setMuted((m) => !m)} className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-muted hover:bg-panel-2">
+              {muted ? <VolumeX size={14} aria-hidden /> : <Volume2 size={14} aria-hidden />}
               {muted ? 'Unmute' : 'Mute'}
             </button>
             <div className="ml-1 flex rounded-md border border-line p-0.5">
@@ -429,8 +510,9 @@ export function EditorView() {
                   key={v}
                   onClick={() => setView(v)}
                   title="Toggle with P"
-                  className={`rounded px-2 py-1 ${view === v ? 'bg-panel-2 text-white' : 'text-muted hover:text-white'}`}
+                  className={`inline-flex items-center gap-1.5 rounded px-2 py-1 ${view === v ? 'bg-panel-2 text-white' : 'text-muted hover:text-white'}`}
                 >
+                  {v === 'edit' ? <CropIcon size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
                   {v === 'edit' ? 'Edit framing' : 'Preview output'}
                 </button>
               ))}
@@ -452,7 +534,7 @@ export function EditorView() {
                   if (show) setView('preview')
                 }}
                 onEdit={(cue, text) => void editCaption(cue, text)}
-                onReset={async () => client && setCaptions(await client.resetCaptions(selected.id))}
+                onReset={() => void resetCaptions()}
                 // Round up to the first frame inside the cue, so the caption you clicked is the one showing.
                 onSeek={(ms) => seekFrame(Math.ceil((ms * fps) / 1000))}
               />
@@ -507,7 +589,7 @@ export function EditorView() {
         durationMs={durationMs}
         fps={fps}
         timeline={source.timeline}
-        thumbsSrc={source.timeline ? client.mediaUrl(source.timeline.thumbs_url) : null}
+        thumbsSrc={source.timeline?.thumbs_url ? client.mediaUrl(source.timeline.thumbs_url) : null}
         waveform={waveform}
         clips={clips}
         selectedId={selectedId}
@@ -530,7 +612,7 @@ const SHORTCUTS: [string, string][] = [
   ['← / →', 'Previous / next frame'],
   ['Shift + ← / →', 'Back / forward 1 second'],
   ['I / O', 'Mark In / Out'],
-  ['N or Enter', 'Add clip'],
+  ['N', 'Add clip'],
   ['Home / End', 'Go to clip start / end'],
   ['P', 'Toggle output preview'],
   ['Delete', 'Delete selected clip'],
@@ -543,7 +625,11 @@ function ShortcutsHint() {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel-2"
+      >
+        <Keyboard size={14} aria-hidden />
         Shortcuts
       </button>
       {open && (

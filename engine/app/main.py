@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__, ffmpeg
 from .analysis.manager import AnalysisManager
-from .api import analysis, captions, clips, exports, projects, sources
+from .api import analysis, captions, clips, exports, projects, sources, ui
 from .config import Settings, load_settings
 from .db import Database
 from .events import EventHub
@@ -46,7 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.events = EventHub()
     app.state.ingest = IngestManager(settings, app.state.db, app.state.events)
     app.state.exports = ExportManager(settings, app.state.db, app.state.events)
-    app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events)
+    app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events, app.state.exports)
 
     def token_ok(supplied: str | None) -> bool:
         return settings.token is None or (supplied is not None and secrets.compare_digest(supplied, settings.token))
@@ -111,4 +111,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exports.router)
     app.include_router(analysis.router)
     app.include_router(captions.router)
+    app.include_router(ui.router)
     return app

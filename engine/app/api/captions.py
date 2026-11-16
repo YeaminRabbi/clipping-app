@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .. import clips
+from ..analysis.manager import AlreadyRunning
 from ..analysis.transcribe import MODELS
 from ..captions.cues import apply_text_edit
 from ..captions.service import clip_cues, clip_words, project_style, resolved_style
@@ -128,6 +129,7 @@ def transcribe_source(source_id: int, body: TranscribeRequest, request: Request)
         raise HTTPException(404, "Source not found")
     if src["status"] != "ready":
         raise HTTPException(409, "This video is still importing")
-    if manager.is_running(source_id):
-        raise HTTPException(409, "This video is already being analyzed")
-    return manager.submit(source_id, {"mode": "transcribe", "model": body.model, "language": body.language})
+    try:
+        return manager.submit(source_id, {"mode": "transcribe", "model": body.model, "language": body.language})
+    except AlreadyRunning:
+        raise HTTPException(409, "This video is already being analyzed") from None

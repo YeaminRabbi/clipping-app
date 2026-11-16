@@ -46,6 +46,11 @@ interface AppState {
   captionStyle: ProjectCaptionStyle | null
   /** Bumped whenever caption inputs change (transcript, style), so caption views refetch. */
   captionsVersion: number
+  /**
+   * How many times each clip id has been deleted. SQLite reuses the ids of deleted clips, so editor
+   * undo entries remember this count and are dropped once their clip has been deleted since.
+   */
+  clipDeletions: Record<number, number>
   /** Source (and optional marked range) for the auto-clip dialog; null when it's closed. */
   autoClipDialog: { sourceId: number; range: { start: number; end: number } | null } | null
 
@@ -106,6 +111,16 @@ export const useApp = create<AppState>((set, get) => {
 
   const inOpenProject = (sourceId: number): boolean => get().sources.some((s) => s.id === sourceId)
 
+  const clipDeleted = (id: number): void => {
+    const { clips, exports, clipDeletions } = get()
+    set({
+      clips: clips.filter((c) => c.id !== id),
+      // The clip's export jobs were deleted with it (and stopped if running).
+      exports: exports.filter((j) => j.clip_id !== id),
+      clipDeletions: { ...clipDeletions, [id]: (clipDeletions[id] ?? 0) + 1 }
+    })
+  }
+
   const onEngineEvent = (event: string, data: unknown): void => {
     const { openProjectId } = get()
     if (event === 'source') {
@@ -115,8 +130,7 @@ export const useApp = create<AppState>((set, get) => {
       const clip = data as Clip
       if (inOpenProject(clip.source_id)) set({ clips: upsert(get().clips, clip, false).sort(byStart) })
     } else if (event === 'clip_deleted') {
-      const { id } = data as { id: number }
-      set({ clips: get().clips.filter((c) => c.id !== id) })
+      clipDeleted((data as { id: number }).id)
     } else if (event === 'analysis') {
       const analysis = data as Analysis
       if (inOpenProject(analysis.source_id)) set({ analyses: { ...get().analyses, [analysis.source_id]: analysis } })
@@ -129,30 +143,52 @@ export const useApp = create<AppState>((set, get) => {
       const { project_id } = data as { project_id: number }
       const client = get().client
       if (project_id === openProjectId && client) {
-        void client.getCaptionStyle(project_id).then((captionStyle) => set({ captionStyle, captionsVersion: get().captionsVersion + 1 }))
+        void run(async (c) => {
+          const captionStyle = await c.getCaptionStyle(project_id)
+          set({ captionStyle, captionsVersion: get().captionsVersion + 1 })
+        })
       }
     } else if (event === 'export') {
       const job = data as ExportJob
       if (job.project_id === openProjectId) set({ exports: upsert(get().exports, job) })
+    } else if (event === 'ui_show') {
+      // Sent by command-line tools (scripts/clip.mjs) to bring a project or a video into view.
+      const { project_id, source_id } = data as { project_id: number; source_id: number | null }
+      void (async () => {
+        if (project_id !== openProjectId) await get().openProject(project_id)
+        // A newer show (or the user) moved to another project while this one loaded.
+        if (get().openProjectId !== project_id) return
+        // Open the editor only for a video that is loaded and ready; otherwise show the project,
+        // where an importing or failed video has its status and controls.
+        const ready = get().sources.some((s) => s.id === source_id && s.status === 'ready')
+        set({ editorSourceId: ready ? source_id : null, exportDialog: null, autoClipDialog: null })
+      })()
     }
   }
 
   const applyStatus = (engine: EngineStatus): void => {
     const client = EngineClient.from(engine)
+    const previous = get().engine
+    // A fresh engine connection (first start or after a restart): errors shown before it, such as
+    // failed requests while the engine was down, no longer describe the current state.
+    const reconnected = client !== null && (previous.url !== engine.url || previous.token !== engine.token)
     unsubscribeEvents?.()
     unsubscribeEvents = client ? client.subscribe(onEngineEvent) : null
-    set({ engine, client, ...(client ? {} : { health: null }) })
+    set({ engine, client, ...(client ? {} : { health: null }), ...(reconnected ? { error: null } : {}) })
     if (client) void get().refresh()
   }
 
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
-  /** Run an engine call, surfacing failures in the error banner. Resolves to null if it failed. */
+  /**
+   * Run an engine call, surfacing failures in the error banner. Resolves to null if it failed.
+   * The banner stays until it's dismissed or a newer error replaces it: clearing it whenever any
+   * call started let an unrelated save wipe a message before anyone could read it.
+   */
   const run = async <T>(fn: (client: EngineClient) => Promise<T>): Promise<T | null> => {
     const client = get().client
     if (!client) return null
     try {
-      set({ error: null })
       return await fn(client)
     } catch (err) {
       set({ error: errorMessage(err) })
@@ -194,6 +230,7 @@ export const useApp = create<AppState>((set, get) => {
     captionStyle: null,
     captionsVersion: 0,
     autoClipDialog: null,
+    clipDeletions: {},
 
     init() {
       const unsubscribe = window.clipping.engine.onStatus(applyStatus)
@@ -322,7 +359,7 @@ export const useApp = create<AppState>((set, get) => {
     deleteClip: async (id) => {
       await run(async (client) => {
         await client.deleteClip(id)
-        set({ clips: get().clips.filter((c) => c.id !== id) })
+        clipDeleted(id)
       })
     },
 
@@ -343,7 +380,9 @@ export const useApp = create<AppState>((set, get) => {
     replaceClip: (id) =>
       run(async (client) => {
         const clip = await client.replaceClip(id)
-        set({ clips: upsert(get().clips.filter((c) => c.id !== id), clip, false).sort(byStart) })
+        // The old clip is deleted; the replacement may even get the same id back.
+        clipDeleted(id)
+        set({ clips: upsert(get().clips, clip, false).sort(byStart) })
         return clip
       }),
 

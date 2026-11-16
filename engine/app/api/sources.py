@@ -132,7 +132,8 @@ def _timeline_asset(request: Request, source_id: int, name: str) -> Path:
     source = _get_or_404(request, source_id)
     if source["status"] != "ready":
         raise HTTPException(404, "Media not available")
-    path = request.app.state.ingest.ensure_timeline_assets(source) / name
+    # Made by the import job (or the startup backfill); never generated inside a request.
+    path = request.app.state.ingest.source_dir(source["project_id"], source_id) / name
     if not path.is_file():
         raise HTTPException(404, "Media not available")
     return path

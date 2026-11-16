@@ -1,3 +1,4 @@
+import { CircleCheck, CircleX, FileText, LoaderCircle, RotateCw } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AppInfo } from '../../../shared/types'
 import { useApp } from '../store'
@@ -5,11 +6,11 @@ import { useApp } from '../store'
 const VENDOR_NAMES: Record<string, string> = { nvidia: 'NVIDIA', intel: 'Intel', amd: 'AMD', apple: 'Apple' }
 
 function Row({ label, ok, children }: { label: string; ok: boolean | null; children: ReactNode }) {
-  const icon = ok === null ? '…' : ok ? '✓' : '✕'
-  const color = ok === null ? 'text-muted' : ok ? 'text-emerald-400' : 'text-red-400'
+  const Icon = ok === null ? LoaderCircle : ok ? CircleCheck : CircleX
+  const color = ok === null ? 'text-muted animate-spin' : ok ? 'text-emerald-400' : 'text-red-400'
   return (
     <div className="flex gap-3 border-t border-line py-3 first:border-t-0">
-      <span className={`w-4 text-center font-semibold ${color}`}>{icon}</span>
+      <Icon size={16} aria-label={ok === null ? 'Checking' : ok ? 'OK' : 'Problem'} className={`mt-0.5 shrink-0 ${color}`} />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{label}</div>
         <div className="mt-0.5 text-xs break-words text-muted">{children}</div>
@@ -38,14 +39,15 @@ export function SystemCheck() {
         <button
           onClick={() => void restartEngine()}
           disabled={engine.state === 'starting'}
-          className="rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2 disabled:opacity-50"
         >
+          <RotateCw size={14} aria-hidden />
           Restart engine
         </button>
       </div>
 
       <Row label="Processing engine" ok={engine.state === 'starting' ? null : ready}>
-        {ready && health ? `v${health.version} · ${engine.url}` : engine.state === 'starting' ? 'Starting…' : engine.error}
+        {ready && health ? `v${health.version} · ${engine.url}` : engine.state === 'starting' ? 'Starting' : engine.error}
       </Row>
       <Row label="Database" ok={health ? health.db.schema_version > 0 : ready ? null : false}>
         {health ? `Schema v${health.db.schema_version} · ${health.db.path}` : '—'}
@@ -66,7 +68,8 @@ export function SystemCheck() {
 
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-xs text-muted">
         <span>{appInfo ? `Clipping App ${appInfo.version}` : ''}</span>
-        <button onClick={() => void window.clipping.app.openLogs()} className="rounded-md px-2 py-1 hover:bg-panel-2 hover:text-white">
+        <button onClick={() => void window.clipping.app.openLogs()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-panel-2 hover:text-white">
+          <FileText size={16} aria-hidden />
           Open logs folder
         </button>
       </div>

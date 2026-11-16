@@ -1,5 +1,7 @@
+import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useApp } from '../store'
+import { confirmAction } from '../lib/confirm'
 
 export function Projects() {
   const ready = useApp((s) => s.engine.state === 'ready')
@@ -32,8 +34,9 @@ export function Projects() {
         <button
           type="submit"
           disabled={!ready || !name.trim()}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
         >
+          <Plus size={16} aria-hidden />
           Create
         </button>
       </form>
@@ -41,7 +44,7 @@ export function Projects() {
       <ul className="mt-4 flex flex-col gap-2">
         {projects.length === 0 && (
           <li className="rounded-md border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-            {ready ? 'No projects yet. Create one to get started.' : 'Waiting for the engine…'}
+            {ready ? 'No projects yet. Create one to get started.' : 'Waiting for the engine'}
           </li>
         )}
         {projects.map((p) => (
@@ -54,12 +57,20 @@ export function Projects() {
               </div>
             </button>
             <button
-              onClick={() => {
-                if (confirm(`Delete project "${p.name}"? This removes its clips from the app.`)) void deleteProject(p.id)
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: `Delete "${p.name}"?`,
+                  message: 'Its videos, clips and export history are removed, and videos it downloaded from links are deleted. Files you imported from your computer and videos you exported are kept.',
+                  confirmLabel: 'Delete project',
+                  danger: true
+                })
+                if (ok) void deleteProject(p.id)
               }}
-              className="mr-3 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-red-950/60 hover:text-red-300"
+              aria-label={`Delete project ${p.name}`}
+              title="Delete project"
+              className="mr-3 grid size-7 place-items-center rounded-md text-muted border border-transparent hover:border-danger-border hover:bg-red-950/60 hover:text-red-300"
             >
-              Delete
+              <Trash2 size={14} aria-hidden />
             </button>
           </li>
         ))}

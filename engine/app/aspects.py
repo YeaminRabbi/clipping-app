@@ -26,8 +26,6 @@ ASPECTS: dict[str, Aspect] = {
     ]
 }
 
-RESOLUTIONS = (1080, 720)
-
 
 def _even(value: float) -> int:
     return max(2, int(round(value / 2)) * 2)

@@ -1,12 +1,14 @@
+import { LoaderCircle, RotateCcw, Scissors, Sparkles, Trash2, X } from 'lucide-react'
 import { ACTIVE_STATUSES, type Source } from '../lib/api'
 import { formatBytes, formatDuration, formatFps, formatResolution } from '../lib/format'
 import { useApp } from '../store'
+import { confirmAction } from '../lib/confirm'
 import { AnalysisStatus } from './AnalysisStatus'
 
 const STAGE_LABELS: Record<Source['status'], string> = {
-  queued: 'Waiting to start…',
+  queued: 'Waiting to start',
   downloading: 'Downloading',
-  probing: 'Reading video details…',
+  probing: 'Reading video details',
   processing: 'Preparing preview',
   ready: 'Ready',
   failed: 'Failed',
@@ -43,7 +45,7 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
           // Contain rather than cover so portrait (phone) videos aren't cropped in the 16:9 box.
           <img src={client.mediaUrl(source.poster_url)} alt="" className="size-full object-contain" />
         ) : (
-          <div className="grid size-full place-items-center text-xs text-muted">{active ? '…' : 'No preview'}</div>
+          <div className="grid size-full place-items-center text-xs text-muted">{active ? <LoaderCircle size={16} aria-label="Importing" className="animate-spin" /> : 'No preview'}</div>
         )}
         {source.status === 'ready' && (
           <div className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
@@ -73,14 +75,16 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
                 <button
                   onClick={() => openAutoClipDialog(source.id)}
                   disabled={analysing}
-                  className="rounded-md border border-accent/60 px-3 py-1 text-xs font-medium hover:bg-accent/20 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-accent/60 px-3 py-1 text-xs font-medium hover:bg-accent/20 disabled:opacity-50"
                 >
+                  <Sparkles size={14} aria-hidden />
                   Find clips
                 </button>
                 <button
                   onClick={() => openEditor(source.id)}
-                  className="rounded-md bg-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
                 >
+                  <Scissors size={14} aria-hidden />
                   {clipCount > 0 ? `Edit ${clipCount} clip${clipCount === 1 ? '' : 's'}` : 'Open editor'}
                 </button>
               </>
@@ -88,25 +92,36 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
             {active && (
               <button
                 onClick={() => void cancelSource(source.id)}
-                className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel hover:text-white"
               >
+                <X size={14} aria-hidden />
                 Cancel
               </button>
             )}
             {(source.status === 'failed' || source.status === 'cancelled') && (
               <button
                 onClick={() => void retrySource(source.id)}
-                className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted hover:bg-panel hover:text-white"
               >
+                <RotateCcw size={14} aria-hidden />
                 Retry
               </button>
             )}
             <button
-              onClick={() => {
-                if (confirm(`Remove "${name}" from this project?`)) void deleteSource(source.id)
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: `Remove "${name}"?`,
+                  message: source.origin === 'url'
+                      ? 'Its clips are removed and the downloaded video is deleted. Videos you exported are kept.'
+                      : 'Its clips are removed from this project. The video file on your computer and videos you exported are kept.',
+                  confirmLabel: 'Remove video',
+                  danger: true
+                })
+                if (ok) void deleteSource(source.id)
               }}
-              className="rounded-md px-2.5 py-1 text-xs text-muted hover:bg-red-950/60 hover:text-red-300"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted border border-transparent hover:border-danger-border hover:bg-red-950/60 hover:text-red-300"
             >
+              <Trash2 size={14} aria-hidden />
               Remove
             </button>
           </div>

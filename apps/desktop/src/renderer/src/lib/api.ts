@@ -66,9 +66,11 @@ export interface ThumbLayout {
 }
 
 export interface SourceTimeline {
-  thumbs_url: string
+  /** Null until the thumbnail sheet exists. */
+  thumbs_url: string | null
   thumbs: ThumbLayout
-  waveform_url: string
+  /** Null until the waveform exists. */
+  waveform_url: string | null
   peaks_per_second: number
 }
 

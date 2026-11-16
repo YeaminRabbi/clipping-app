@@ -1,3 +1,4 @@
+import { ArrowLeft, Download } from 'lucide-react'
 import { useApp } from '../store'
 import { ExportsPanel } from './ExportsPanel'
 import { ImportPanel } from './ImportPanel'
@@ -12,17 +13,19 @@ export function ProjectView() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <button onClick={closeProject} className="rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
-          ← Projects
+        <button onClick={closeProject} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
+          <ArrowLeft size={14} aria-hidden />
+          Projects
         </button>
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{project?.name ?? 'Project'}</h2>
         <button
           onClick={() => openExportDialog(clips.map((c) => c.id))}
           disabled={clips.length === 0}
           title={clips.length === 0 ? 'Open a video and make some clips first' : undefined}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
         >
-          Export {clips.length > 0 ? `${clips.length} clip${clips.length === 1 ? '' : 's'}` : 'clips'}…
+          <Download size={16} aria-hidden />
+          Export {clips.length > 0 ? `${clips.length} clip${clips.length === 1 ? '' : 's'}` : 'clips'}
         </button>
       </div>
 

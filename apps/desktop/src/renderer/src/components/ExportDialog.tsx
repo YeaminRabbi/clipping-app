@@ -1,8 +1,10 @@
+import { Download, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ExportPreset } from '../lib/api'
 import { ASPECTS } from '../lib/aspects'
 import { shortDuration } from '../lib/time'
 import { useApp } from '../store'
+import { Modal } from './Modal'
 
 const PRESET_STORAGE_KEY = 'clipping.exportPreset'
 const DEFAULT_TEMPLATE = '{project}_{index}_{title}_{ratio}'
@@ -123,16 +125,32 @@ export function ExportDialog() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onMouseDown={closeExportDialog}>
-      <div
-        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-base font-semibold">Export clips</h2>
-          <p className="mt-0.5 text-xs text-muted">Clips are rendered from the original video at full quality.</p>
-        </div>
-
+    <Modal
+      size="lg"
+      title="Export clips"
+      description="Clips are rendered from the original video at full quality."
+      onClose={closeExportDialog}
+      footer={
+        <>
+          <span className="text-xs text-muted">
+            {total === 0 ? 'Pick at least one clip and one size' : `${total} video${total === 1 ? '' : 's'} will be created`}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={closeExportDialog} className="rounded-md px-4 py-2 text-sm text-muted hover:bg-panel-2 hover:text-ink">
+              Cancel
+            </button>
+            <button
+              onClick={() => void submit()}
+              disabled={busy || total === 0 || !preset.output_dir || !preset.name_template.trim()}
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}
+              {busy ? 'Starting' : `Export ${total || ''}`}
+            </button>
+          </div>
+        </>
+      }
+    >
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-auto p-5 md:grid-cols-[1fr_1fr]">
           <section>
             <div className="mb-2 flex items-center justify-between">
@@ -306,7 +324,7 @@ export function ExportDialog() {
                   }}
                   className="rounded-md border border-line px-3 text-sm hover:bg-panel-2"
                 >
-                  Change…
+                  Change
                 </button>
               </div>
             </Field>
@@ -323,25 +341,6 @@ export function ExportDialog() {
             </Field>
           </section>
         </div>
-
-        <div className="flex items-center justify-between border-t border-line px-5 py-3">
-          <span className="text-xs text-muted">
-            {total === 0 ? 'Pick at least one clip and one size' : `${total} video${total === 1 ? '' : 's'} will be created`}
-          </span>
-          <div className="flex gap-2">
-            <button onClick={closeExportDialog} className="rounded-md px-4 py-2 text-sm text-muted hover:bg-panel-2">
-              Cancel
-            </button>
-            <button
-              onClick={() => void submit()}
-              disabled={busy || total === 0 || !preset.output_dir || !preset.name_template.trim()}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
-            >
-              {busy ? 'Starting…' : `Export ${total || ''}`}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

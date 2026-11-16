@@ -1,5 +1,15 @@
 @import 'tailwindcss';
 
+/* hover: styles never apply to disabled controls, so a greyed-out button doesn't light up as if it
+   would respond. Same as Tailwind's own hover variant otherwise (only on devices that can hover). */
+@custom-variant hover {
+  @media (hover: hover) {
+    &:not(:disabled):hover {
+      @slot;
+    }
+  }
+}
+
 :root {
   color-scheme: dark;
 
@@ -96,6 +106,7 @@
   --color-warning-subtle: var(--ui-warning-bg);
   --color-danger: var(--ui-danger);
   --color-danger-subtle: var(--ui-danger-bg);
+  --color-danger-border: var(--ui-danger-border);
 
   --spacing: 4px;
 
@@ -157,8 +168,10 @@ button {
   cursor: pointer;
 }
 
+/* Disabled means "not available right now", not "busy": a wait cursor made idle buttons look like
+   they were loading. Busy states show a spinner on the button instead. */
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 :focus-visible {

@@ -145,5 +145,5 @@ def title_for(cand: Candidate, index: int, mode: str, max_words: int = 7) -> str
         return cand.title
     if mode == "talking" and cand.sentences:
         words = cand.sentences[0].rstrip(".!?…,").split()
-        return " ".join(words[:max_words]) + ("…" if len(words) > max_words else "")
+        return " ".join(words[:max_words])
     return f"Highlight {index}"

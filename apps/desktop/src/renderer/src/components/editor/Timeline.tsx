@@ -1,3 +1,4 @@
+import { ZoomIn, ZoomOut } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Clip, SourceTimeline } from '../../lib/api'
 import { snapMs, timecode } from '../../lib/time'
@@ -243,14 +244,24 @@ export function Timeline(props: Props) {
             : 'Press I and O to mark a range, or drag on the timeline'}
         </span>
         <div className="flex items-center gap-1">
-          <button onClick={() => zoomTo(pps * 0.66)} className="rounded px-2 py-0.5 hover:bg-panel-2" title="Zoom out (−)">
-            −
+          <button
+            onClick={() => zoomTo(pps * 0.66)}
+            className="grid place-items-center rounded px-1.5 py-1 hover:bg-panel-2"
+            title="Zoom out (−)"
+            aria-label="Zoom out"
+          >
+            <ZoomOut size={14} aria-hidden />
           </button>
           <button onClick={() => setZoomPps(null)} className="rounded px-2 py-0.5 hover:bg-panel-2" title="Fit whole video">
             Fit
           </button>
-          <button onClick={() => zoomTo(pps * 1.5)} className="rounded px-2 py-0.5 hover:bg-panel-2" title="Zoom in (+)">
-            +
+          <button
+            onClick={() => zoomTo(pps * 1.5)}
+            className="grid place-items-center rounded px-1.5 py-1 hover:bg-panel-2"
+            title="Zoom in (+)"
+            aria-label="Zoom in"
+          >
+            <ZoomIn size={14} aria-hidden />
           </button>
         </div>
       </div>
