@@ -109,7 +109,7 @@ export class EngineProcess {
       return Promise.resolve(this.getStatus())
     }
 
-    const dataDir = join(app.getPath('userData'), 'data')
+    const dataDir = process.env.CLIP_DATA_DIR ? resolve(process.env.CLIP_DATA_DIR) : join(app.getPath('userData'), 'data')
     mkdirSync(dataDir, { recursive: true })
     const token = randomBytes(32).toString('hex')
 
@@ -120,7 +120,7 @@ export class EngineProcess {
       env: {
         ...process.env,
         CLIP_DATA_DIR: dataDir,
-        CLIP_BIN_DIR: binDir,
+        CLIP_BIN_DIR: process.env.CLIP_BIN_DIR ? resolve(process.env.CLIP_BIN_DIR) : binDir,
         CLIP_ENGINE_TOKEN: token,
         CLIP_LOG_DIR: logsDir(),
         PYTHONUNBUFFERED: '1'
@@ -170,12 +170,16 @@ export class EngineProcess {
         this.child = null
         if (this.status.state !== 'stopped') {
           const tail = this.status.logs.slice(-5).join('\n')
+          const missingDependency = this.status.logs.some((line) => line.includes('ModuleNotFoundError:'))
+          const recovery = missingDependency && !app.isPackaged
+            ? '\nRun "npm run setup" in the project root, then restart the engine.'
+            : ''
           log('error', `Engine exited unexpectedly (${signal ?? `code ${code}`}). Last output:\n${this.status.logs.slice(-30).join('\n')}`)
           this.update({
             state: 'error',
             url: null,
             token: null,
-            error: `Engine exited (${signal ?? `code ${code}`})${tail ? `:\n${tail}` : ''}`
+            error: `Engine exited (${signal ?? `code ${code}`})${tail ? `:\n${tail}` : ''}${recovery}`
           })
         }
         settle()

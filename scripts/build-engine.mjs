@@ -4,6 +4,9 @@ import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { binDir, engineDir, exe, venvPython } from './paths.mjs'
+import { ensureEngine } from './ensure-engine.mjs'
+
+ensureEngine({ dev: true })
 
 const distDir = join(engineDir, 'dist', 'clipping-engine')
 rmSync(join(engineDir, 'build'), { recursive: true, force: true })

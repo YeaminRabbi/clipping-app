@@ -33,6 +33,30 @@ npm run bundle:ffmpeg  # copy ffmpeg/ffprobe from PATH into bin/
 npm run dev
 ```
 
+`npm run dev` checks the local Python environment before opening Electron. It creates the venv
+if needed and installs missing or changed runtime dependencies, including after a `git pull`.
+The first run needs internet access; subsequent launches skip installation when requirements
+are satisfied. `npm run setup` also installs the test/build tools and Electron binary.
+
+Paths are resolved from the clone and the current user's OS folders; no username, drive or
+GPU is required in configuration. On Windows, setup tries the `py` launcher and then Python
+on PATH; elsewhere it tries `python3` and `python`. Python must be 3.11 or newer.
+FFmpeg and ffprobe are discovered from explicit overrides, then `bin/`, then PATH.
+Hardware export falls back to CPU when an encoder cannot run on the current device.
+
+Optional environment variables (set before setup/start):
+
+| Variable | Purpose |
+|---|---|
+| `CLIP_PYTHON` | Python executable used to create the local venv when it is missing or unusable |
+| `CLIP_DATA_DIR` | Store projects and the database in a custom folder instead of the OS app-data folder |
+| `CLIP_BIN_DIR` | Folder containing FFmpeg and ffprobe |
+| `CLIP_FFMPEG_PATH`, `CLIP_FFPROBE_PATH` | Override either executable individually |
+| `CLIP_MODELS_DIR` | Custom speech-model cache folder |
+
+Do not copy `engine/.venv` or `node_modules` between devices; recreate them in each clone.
+The packaged Windows installer bundles Python and its dependencies, so end users do not need setup.
+
 ## Other commands
 
 | Command | What it does |

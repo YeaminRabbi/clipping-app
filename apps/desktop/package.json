@@ -6,6 +6,7 @@
   "description": "Turn long videos into short clips: auto clipping, smart reframing, captions and batch export.",
   "main": "out/main/index.js",
   "scripts": {
+    "predev": "node ../../scripts/ensure-engine.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

@@ -138,6 +138,8 @@ engine/
   tests/               pytest; conftest makes synthetic videos with FFmpeg; speech tests use Windows TTS
 
 scripts/               clip.mjs (agent CLI for the running app), setup, bundle-ffmpeg, run-engine-tests, build-engine (PyInstaller), paths.mjs
+                       ensure-engine.mjs creates/checks the device-local venv before dev and packaging;
+                       engine/check_dependencies.py validates installed versions without third-party imports
 PLAN.md                product plan and roadmap. Its "Folder Structure" section is outdated; trust the map above.
 ```
 
@@ -217,8 +219,12 @@ WebSocket events (names passed to `events.emit`, handled in `store.ts` `onEngine
 
 ## Gotchas
 
-- `npm run dev` fails with "Python venv not found" until `npm run setup` has run; it also needs
-  `node_modules` (`npm install`).
+- `npm run dev` runs `ensure-engine.mjs` before Electron: it discovers Python 3.11+ (or
+  `CLIP_PYTHON`), creates the local venv if needed, and installs missing/changed requirements.
+  It needs internet for installation and `node_modules` (`npm install`). `npm run setup` also
+  installs test/build dependencies and the Electron binary. Do not copy venvs between devices.
+- Paths come from the clone and OS user folders. The desktop engine honors `CLIP_DATA_DIR`
+  and `CLIP_BIN_DIR`; individual tool overrides and `CLIP_MODELS_DIR` are passed through.
 - Without FFmpeg in `bin/` (or on PATH) the UI loads, but imports and exports fail. `/health` and
   the SystemCheck panel report it.
 - The engine port is random on every launch. Find it in the dev console output, or in the engine
