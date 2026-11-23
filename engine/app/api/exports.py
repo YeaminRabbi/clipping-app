@@ -127,14 +127,16 @@ def cancel_export(job_id: int, request: Request) -> dict[str, Any]:
 
 @router.post("/exports/{job_id}/retry")
 def retry_export(job_id: int, request: Request) -> dict[str, Any]:
-    job = _job_or_404(request, job_id)
-    if job["status"] not in ("failed", "cancelled"):
-        raise HTTPException(409, "Only failed or cancelled exports can be retried")
+    _job_or_404(request, job_id)
     with request.app.state.db.connect() as conn:
-        conn.execute(
-            "UPDATE export_jobs SET status = 'queued', progress = 0, error = NULL, output_path = NULL WHERE id = ?",
+        # Checking and changing the status in one step, so two requests can't start the export twice.
+        cur = conn.execute(
+            """UPDATE export_jobs SET status = 'queued', progress = 0, error = NULL, output_path = NULL
+               WHERE id = ? AND status IN ('failed', 'cancelled')""",
             (job_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(409, "Only failed or cancelled exports can be retried")
         job = exports.get_job(conn, job_id)
     request.app.state.exports.submit(job)
     return job

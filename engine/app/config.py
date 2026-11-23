@@ -25,6 +25,11 @@ class Settings:
         return self.data_dir / "clipping.db"
 
     @property
+    def work_dir(self) -> Path:
+        """Short-lived files of running jobs, one folder per job."""
+        return self.data_dir / "work"
+
+    @property
     def projects_dir(self) -> Path:
         return self.data_dir / "projects"
 

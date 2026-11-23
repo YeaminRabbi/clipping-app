@@ -150,6 +150,119 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE clips ADD COLUMN edit_json TEXT NOT NULL DEFAULT '{}';
     """,
+    # Ids are never reused (AUTOINCREMENT). Workers, cancel tokens and folders are keyed by id, so a
+    # reused one let the worker of a deleted job write to the job that got its id. SQLite can't add
+    # AUTOINCREMENT to a table, so each is rebuilt; migrate() has foreign keys off while this runs.
+    """
+    CREATE TABLE projects_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL,
+        settings_json TEXT NOT NULL DEFAULT '{}',
+        created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    INSERT INTO projects_new (id, name, settings_json, created_at, updated_at)
+        SELECT id, name, settings_json, created_at, updated_at FROM projects;
+    DROP TABLE projects;
+    ALTER TABLE projects_new RENAME TO projects;
+
+    CREATE TABLE sources_new (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        origin          TEXT NOT NULL CHECK (origin IN ('url', 'file')),
+        url             TEXT,
+        path            TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        duration_ms     INTEGER,
+        fps             REAL,
+        width           INTEGER,
+        height          INTEGER,
+        proxy_path      TEXT,
+        transcript_path TEXT,
+        created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        title           TEXT,
+        progress        REAL NOT NULL DEFAULT 0,
+        error           TEXT,
+        size_bytes      INTEGER,
+        video_codec     TEXT,
+        audio_codec     TEXT,
+        has_audio       INTEGER NOT NULL DEFAULT 0,
+        is_vfr          INTEGER NOT NULL DEFAULT 0,
+        poster_path     TEXT
+    );
+    INSERT INTO sources_new (id, project_id, origin, url, path, status, duration_ms, fps, width, height, proxy_path,
+                             transcript_path, created_at, title, progress, error, size_bytes, video_codec, audio_codec,
+                             has_audio, is_vfr, poster_path)
+        SELECT id, project_id, origin, url, path, status, duration_ms, fps, width, height, proxy_path,
+               transcript_path, created_at, title, progress, error, size_bytes, video_codec, audio_codec,
+               has_audio, is_vfr, poster_path FROM sources;
+    DROP TABLE sources;
+    ALTER TABLE sources_new RENAME TO sources;
+    CREATE INDEX idx_sources_project ON sources(project_id);
+
+    CREATE TABLE clips_new (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id          INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        start_ms           INTEGER NOT NULL,
+        end_ms             INTEGER NOT NULL,
+        score              REAL,
+        score_reasons_json TEXT NOT NULL DEFAULT '[]',
+        title              TEXT,
+        status             TEXT NOT NULL DEFAULT 'suggested'
+                           CHECK (status IN ('suggested', 'kept', 'rejected')),
+        sort_order         INTEGER NOT NULL DEFAULT 0,
+        created_at         TEXT,
+        edit_json          TEXT NOT NULL DEFAULT '{}',
+        CHECK (end_ms > start_ms)
+    );
+    INSERT INTO clips_new (id, source_id, start_ms, end_ms, score, score_reasons_json, title, status, sort_order,
+                           created_at, edit_json)
+        SELECT id, source_id, start_ms, end_ms, score, score_reasons_json, title, status, sort_order,
+               created_at, edit_json FROM clips;
+    DROP TABLE clips;
+    ALTER TABLE clips_new RENAME TO clips;
+    CREATE INDEX idx_clips_source ON clips(source_id);
+
+    CREATE TABLE clip_formats_new (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        clip_id             INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+        aspect              TEXT NOT NULL,
+        mode                TEXT NOT NULL DEFAULT 'smart' CHECK (mode IN ('smart', 'manual', 'fit')),
+        crop_keyframes_json TEXT NOT NULL DEFAULT '[]',
+        options_json        TEXT NOT NULL DEFAULT '{}'
+    );
+    INSERT INTO clip_formats_new (id, clip_id, aspect, mode, crop_keyframes_json, options_json)
+        SELECT id, clip_id, aspect, mode, crop_keyframes_json, options_json FROM clip_formats;
+    DROP TABLE clip_formats;
+    ALTER TABLE clip_formats_new RENAME TO clip_formats;
+    CREATE INDEX idx_clip_formats_clip ON clip_formats(clip_id);
+    CREATE UNIQUE INDEX idx_clip_formats_clip_aspect ON clip_formats(clip_id, aspect);
+
+    CREATE TABLE export_jobs_new (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        clip_format_id INTEGER NOT NULL REFERENCES clip_formats(id) ON DELETE CASCADE,
+        preset_json    TEXT NOT NULL DEFAULT '{}',
+        burn_captions  INTEGER NOT NULL DEFAULT 0,
+        export_srt     INTEGER NOT NULL DEFAULT 0,
+        status         TEXT NOT NULL DEFAULT 'queued',
+        progress       REAL NOT NULL DEFAULT 0,
+        output_path    TEXT,
+        error          TEXT,
+        created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        encoder        TEXT,
+        output_name    TEXT,
+        batch_id       TEXT,
+        srt_path       TEXT
+    );
+    INSERT INTO export_jobs_new (id, clip_format_id, preset_json, burn_captions, export_srt, status, progress, output_path,
+                                 error, created_at, encoder, output_name, batch_id, srt_path)
+        SELECT id, clip_format_id, preset_json, burn_captions, export_srt, status, progress, output_path,
+               error, created_at, encoder, output_name, batch_id, srt_path FROM export_jobs;
+    DROP TABLE export_jobs;
+    ALTER TABLE export_jobs_new RENAME TO export_jobs;
+    CREATE INDEX idx_export_jobs_format ON export_jobs(clip_format_id);
+    CREATE INDEX idx_export_jobs_batch ON export_jobs(batch_id);
+    """,
 ]
 
 
@@ -180,6 +293,8 @@ class Database:
         with self.connect() as conn:
             # WAL is stored in the database file, so setting it once at startup covers every later connection.
             conn.execute("PRAGMA journal_mode = WAL")
+            # Rebuilding a table drops the old one, which would delete everything that references it.
+            conn.execute("PRAGMA foreign_keys = OFF")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             for i in range(version, len(MIGRATIONS)):
                 conn.executescript(MIGRATIONS[i])

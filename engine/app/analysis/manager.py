@@ -118,7 +118,9 @@ class AnalysisManager:
 
     # --- worker side -------------------------------------------------------------------------
 
-    def _update(self, source_id: int, **fields: Any) -> None:
+    def _update(self, source_id: int, token: CancelToken, **fields: Any) -> None:
+        if self.tokens.get(source_id) is not token:  # not this job's row any more (see IngestManager._update)
+            return
         assignments = ", ".join(f"{k} = ?" for k in fields)
         with self.db.connect() as conn:
             conn.execute(
@@ -129,14 +131,14 @@ class AnalysisManager:
         if analysis:
             self.events.emit("analysis", analysis)
 
-    def _reporter(self, source_id: int, start: float, span: float):
+    def _reporter(self, source_id: int, token: CancelToken, start: float, span: float):
         last = {"t": 0.0}
 
         def report(fraction: float) -> None:
             now = time.monotonic()
             if now - last["t"] >= PROGRESS_INTERVAL_S:
                 last["t"] = now
-                self._update(source_id, progress=round(start + span * fraction, 4))
+                self._update(source_id, token, progress=round(start + span * fraction, 4))
 
         return report
 
@@ -153,14 +155,14 @@ class AnalysisManager:
             work_dir = sources.source_dir(self.settings, src["project_id"], source_id)
             proxy = Path(src["proxy_path"] or "")
             duration = src["duration_ms"]
-            self._update(source_id, status="running", progress=0, error=None)
+            self._update(source_id, token, status="running", progress=0, error=None)
 
             mode = params["mode"]
             if mode == "transcribe":
                 if not src["has_audio"]:
                     raise MediaError("This video has no sound to transcribe")
                 self._transcript(source_id, src, proxy, work_dir, params, token)
-                self._update(source_id, status="done", stage=None, progress=1, error=None)
+                self._update(source_id, token, status="done", stage=None, progress=1, error=None)
                 self.events.emit("transcript", {"source_id": source_id})
                 return
             needs_speech = mode == "talking" or (mode == "action" and params["keywords"])
@@ -170,15 +172,15 @@ class AnalysisManager:
                 words = self._transcript(source_id, src, proxy, work_dir, params, token)
                 done = 0.8
 
-            self._update(source_id, stage="Finding scene changes", progress=done)
+            self._update(source_id, token, stage="Finding scene changes", progress=done)
             cuts = self._scene_cuts(source_id, proxy, work_dir, duration, token, done, 0.95 - done)
             token.raise_if_cancelled()
-            self._update(source_id, stage="Measuring audio", progress=0.95)
+            self._update(source_id, token, stage="Measuring audio", progress=0.95)
             levels = loudness(tools.ffmpeg.path, proxy, duration, bool(src["has_audio"]))
             sig = Signals(words=words, loudness=levels, cuts=cuts, silences=silences(levels))
 
             token.raise_if_cancelled()
-            self._update(source_id, stage="Scoring moments", progress=0.97)
+            self._update(source_id, token, stage="Scoring moments", progress=0.97)
             lo = max(0, params.get("range_start_ms") or 0)
             hi = min(duration, params.get("range_end_ms") or duration)
             settings = FindSettings(
@@ -192,12 +194,12 @@ class AnalysisManager:
             )
             self._apply(source_id, settings, sig, duration, token)
         except Cancelled:
-            self._update(source_id, status="cancelled", stage=None, error=None)
+            self._update(source_id, token, status="cancelled", stage=None, error=None)
         except MediaError as err:
-            self._update(source_id, status="failed", stage=None, error=str(err))
+            self._update(source_id, token, status="failed", stage=None, error=str(err))
         except Exception as err:
             log.exception("Analysis failed for source %s", source_id)
-            self._update(source_id, status="failed", stage=None, error=f"Unexpected error: {err}")
+            self._update(source_id, token, status="failed", stage=None, error=f"Unexpected error: {err}")
         finally:
             if self.tokens.get(source_id) is token:
                 del self.tokens[source_id]
@@ -214,17 +216,17 @@ class AnalysisManager:
         if cached:
             return cached["words"]
         if not model_is_downloaded(self.settings.models_path, model):
-            self._update(source_id, stage="Downloading speech model (first time only)")
+            self._update(source_id, token, stage="Downloading speech model (first time only)")
         else:
-            self._update(source_id, stage=transcribing_stage())
+            self._update(source_id, token, stage=transcribing_stage())
         tools = ffmpeg.detect(self.settings.bin_dir)
         first = {"seen": False}
-        report = self._reporter(source_id, 0, 0.8)
+        report = self._reporter(source_id, token, 0, 0.8)
 
         def on_progress(fraction: float) -> None:
             if not first["seen"]:
                 first["seen"] = True
-                self._update(source_id, stage=transcribing_stage())
+                self._update(source_id, token, stage=transcribing_stage())
             report(fraction)
 
         data = transcribe(
@@ -235,7 +237,7 @@ class AnalysisManager:
 
     def _scene_cuts(self, source_id, proxy: Path, work_dir: Path, duration: int, token, start: float, span: float) -> list[int]:
         tools = ffmpeg.detect(self.settings.bin_dir)
-        return cached_scene_cuts(tools.ffmpeg.path, proxy, work_dir, duration, token, self._reporter(source_id, start, span))
+        return cached_scene_cuts(tools.ffmpeg.path, proxy, work_dir, duration, token, self._reporter(source_id, token, start, span))
 
     def _apply(self, source_id: int, settings: FindSettings, sig: Signals, duration: int, token: CancelToken) -> None:
         """Replace the source's suggested clips with the new picks. Clips the user kept or edited stay."""

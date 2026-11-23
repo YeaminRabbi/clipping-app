@@ -84,7 +84,11 @@ class IngestManager:
 
     # --- worker side -------------------------------------------------------------------------
 
-    def _update(self, source_id: int, **fields: Any) -> dict[str, Any] | None:
+    def _update(self, source_id: int, token: CancelToken, **fields: Any) -> dict[str, Any] | None:
+        """Write a job's state, if `token` is still that job's. A worker left over from before a retry
+        must not change what the new one reports."""
+        if self.tokens.get(source_id) is not token:
+            return None
         assignments = ", ".join(f"{k} = ?" for k in fields)
         with self.db.connect() as conn:
             conn.execute(f"UPDATE sources SET {assignments} WHERE id = ?", (*fields.values(), source_id))
@@ -146,14 +150,14 @@ class IngestManager:
         if self.tokens.get(source_id) is token:
             del self.tokens[source_id]
 
-    def _progress_reporter(self, source_id: int, start: float, span: float):
+    def _progress_reporter(self, source_id: int, token: CancelToken, start: float, span: float):
         last = {"t": 0.0}
 
         def report(fraction: float) -> None:
             now = time.monotonic()
             if now - last["t"] >= PROGRESS_INTERVAL_S:
                 last["t"] = now
-                self._update(source_id, progress=round(start + span * fraction, 4))
+                self._update(source_id, token, progress=round(start + span * fraction, 4))
 
         return report
 
@@ -163,7 +167,7 @@ class IngestManager:
         if row is None or token.cancelled:
             # Cancelled while still waiting in the queue.
             if row is not None:
-                self._update(source_id, status="cancelled", error=None)
+                self._update(source_id, token, status="cancelled", error=None)
             self._release(source_id, token)
             return
 
@@ -177,17 +181,17 @@ class IngestManager:
 
             process_start = 0.0
             if row["origin"] == "url":
-                self._update(source_id, status="downloading", progress=0, error=None)
+                self._update(source_id, token, status="downloading", progress=0, error=None)
                 result = download(
                     row["url"],
                     work_dir,
                     tools.ffmpeg.path,
                     token,
-                    on_progress=self._progress_reporter(source_id, 0, DOWNLOAD_WEIGHT),
-                    on_title=lambda title: self._update(source_id, title=title),
+                    on_progress=self._progress_reporter(source_id, token, 0, DOWNLOAD_WEIGHT),
+                    on_title=lambda title: self._update(source_id, token, title=title),
                 )
                 src = result.path
-                self._update(source_id, path=str(src), **({"title": result.title} if result.title else {}))
+                self._update(source_id, token, path=str(src), **({"title": result.title} if result.title else {}))
                 process_start = DOWNLOAD_WEIGHT
             else:
                 src = Path(row["path"])
@@ -195,10 +199,11 @@ class IngestManager:
                     raise MediaError(f"File not found: {src}")
 
             token.raise_if_cancelled()
-            self._update(source_id, status="probing", progress=process_start, error=None)
+            self._update(source_id, token, status="probing", progress=process_start, error=None)
             info = probe(tools.ffprobe.path, src)
             self._update(
                 source_id,
+                token,
                 duration_ms=info.duration_ms,
                 fps=info.fps,
                 width=info.width,
@@ -211,11 +216,11 @@ class IngestManager:
             )
 
             token.raise_if_cancelled()
-            self._update(source_id, status="processing")
+            self._update(source_id, token, status="processing")
             poster = work_dir / "poster.jpg"
             try:
                 make_poster(tools.ffmpeg.path, src, poster, info, token)
-                self._update(source_id, poster_path=str(poster))
+                self._update(source_id, token, poster_path=str(poster))
             except MediaError as err:
                 log.warning("Poster failed for source %s: %s", source_id, err)
 
@@ -226,18 +231,18 @@ class IngestManager:
                 proxy,
                 info,
                 token,
-                on_progress=self._progress_reporter(source_id, process_start, 1 - process_start),
+                on_progress=self._progress_reporter(source_id, token, process_start, 1 - process_start),
             )
-            self._update(source_id, proxy_path=str(proxy))
+            self._update(source_id, token, proxy_path=str(proxy))
             self._make_timeline_assets(work_dir, info.duration_ms, info.width, info.height, info.has_audio, token)
-            self._update(source_id, status="ready", progress=1, error=None)
+            self._update(source_id, token, status="ready", progress=1, error=None)
         except Cancelled:
-            self._update(source_id, status="cancelled", error=None)
+            self._update(source_id, token, status="cancelled", error=None)
         except MediaError as err:
-            self._update(source_id, status="failed", error=str(err))
+            self._update(source_id, token, status="failed", error=str(err))
         except Exception as err:
             log.exception("Import failed for source %s", source_id)
-            self._update(source_id, status="failed", error=f"Unexpected error: {err}")
+            self._update(source_id, token, status="failed", error=f"Unexpected error: {err}")
         finally:
             self._release(source_id, token)
             # If the source was deleted while running, its files couldn't be removed then; do it now.

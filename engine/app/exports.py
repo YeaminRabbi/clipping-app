@@ -5,9 +5,9 @@ import logging
 import re
 import shutil
 import sqlite3
-import tempfile
 import threading
 import time
+import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -171,6 +171,8 @@ class ExportManager:
         self._zip_lock = threading.Lock()
 
     def start(self) -> None:
+        # Nothing is running yet: whatever is in here was left by an engine that was killed.
+        shutil.rmtree(self.settings.work_dir, ignore_errors=True)
         placeholders = ",".join("?" * len(ACTIVE_STATUSES))
         with self.db.connect() as conn:
             interrupted = conn.execute(
@@ -213,7 +215,10 @@ class ExportManager:
 
     # --- worker side -------------------------------------------------------------------------
 
-    def _update(self, job_id: int, **fields: Any) -> dict[str, Any] | None:
+    def _update(self, job_id: int, token: CancelToken, **fields: Any) -> dict[str, Any] | None:
+        """Write a job's state, if `token` is still that job's (see IngestManager._update)."""
+        if self.tokens.get(job_id) is not token:
+            return None
         assignments = ", ".join(f"{k} = ?" for k in fields)
         with self.db.connect() as conn:
             conn.execute(f"UPDATE export_jobs SET {assignments} WHERE id = ?", (*fields.values(), job_id))
@@ -259,7 +264,7 @@ class ExportManager:
             ).fetchone()
         if row is None or token.cancelled:
             if row is not None:
-                self._update(job_id, status="cancelled", error=None)
+                self._update(job_id, token, status="cancelled", error=None)
             self._release(job_id, token)
             return
 
@@ -273,7 +278,7 @@ class ExportManager:
             if row["source_status"] != "ready" or not src.is_file():
                 raise MediaError(f"The original video is missing: {src}")
 
-            self._update(job_id, status="rendering", progress=0, error=None)
+            self._update(job_id, token, status="rendering", progress=0, error=None)
             preset = json.loads(row["preset_json"])
             info = probe(tools.ffprobe.path, src)
 
@@ -301,7 +306,7 @@ class ExportManager:
             folder = Path(preset["output_dir"])
             folder.mkdir(parents=True, exist_ok=True)
             dest = reserve_path(folder, row["output_name"])
-            self._update(job_id, output_path=str(dest))
+            self._update(job_id, token, output_path=str(dest))
 
             cues, style, caption_offset = None, None, row["start_ms"]
             if row["burn_captions"] or row["export_srt"]:
@@ -310,7 +315,8 @@ class ExportManager:
             if row["burn_captions"] and cues:
                 # libass reads the subtitles and font by relative name from a private folder, which
                 # avoids escaping Windows paths inside the filter graph.
-                caption_dir = Path(tempfile.mkdtemp(prefix="clipping-captions-"))
+                caption_dir = self.settings.work_dir / f"export-{job_id}-{uuid.uuid4().hex[:8]}"
+                caption_dir.mkdir(parents=True)
                 (caption_dir / "captions.ass").write_text(
                     build_ass(cues, style, out_w, out_h, caption_offset), encoding="utf-8"
                 )
@@ -329,10 +335,10 @@ class ExportManager:
                 now = time.monotonic()
                 if now - last["t"] >= PROGRESS_INTERVAL_S:
                     last["t"] = now
-                    self._update(job_id, progress=round(fraction, 4))
+                    self._update(job_id, token, progress=round(fraction, 4))
 
             def render(enc: str) -> None:
-                self._update(job_id, encoder=enc)
+                self._update(job_id, token, encoder=enc)
                 render_clip(
                     tools.ffmpeg.path,
                     src,
@@ -371,16 +377,16 @@ class ExportManager:
             if row["export_srt"] and cues:
                 srt = dest.with_suffix(".srt")
                 srt.write_text(to_srt(cues, style, caption_offset), encoding="utf-8")
-                self._update(job_id, srt_path=str(srt))
+                self._update(job_id, token, srt_path=str(srt))
             finished = True
-            self._update(job_id, status="done", progress=1, error=None)
+            self._update(job_id, token, status="done", progress=1, error=None)
         except Cancelled:
-            self._update(job_id, status="cancelled", error=None)
+            self._update(job_id, token, status="cancelled", error=None)
         except MediaError as err:
-            self._update(job_id, status="failed", error=str(err))
+            self._update(job_id, token, status="failed", error=str(err))
         except Exception as err:
             log.exception("Export %s failed", job_id)
-            self._update(job_id, status="failed", error=f"Unexpected error: {err}")
+            self._update(job_id, token, status="failed", error=f"Unexpected error: {err}")
         finally:
             # Drop the empty placeholder reserve_path made when the video never got written.
             if not finished and dest is not None and dest.is_file() and dest.stat().st_size == 0:

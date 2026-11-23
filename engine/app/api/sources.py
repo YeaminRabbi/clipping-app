@@ -75,7 +75,11 @@ def add_source(project_id: int, body: SourceCreate, request: Request) -> dict[st
             "UPDATE projects SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?", (project_id,)
         )
         source = sources.get(conn, cur.lastrowid)
-    request.app.state.ingest.submit(source)
+    # Ids are never reused, but a folder may be left from before that was so; its cached transcript and
+    # scene cuts would belong to another video.
+    ingest = request.app.state.ingest
+    ingest.remove_files(ingest.source_dir(project_id, source["id"]))
+    ingest.submit(source)
     return source
 
 
@@ -94,11 +98,16 @@ def cancel_source(source_id: int, request: Request) -> dict[str, Any]:
 
 @router.post("/sources/{source_id}/retry")
 def retry_source(source_id: int, request: Request) -> dict[str, Any]:
-    source = _get_or_404(request, source_id)
-    if source["status"] not in sources.RETRYABLE_STATUSES:
-        raise HTTPException(409, "Only failed or cancelled imports can be retried")
+    _get_or_404(request, source_id)
+    placeholders = ",".join("?" * len(sources.RETRYABLE_STATUSES))
     with request.app.state.db.connect() as conn:
-        conn.execute("UPDATE sources SET status = 'queued', progress = 0, error = NULL WHERE id = ?", (source_id,))
+        # Checking and changing the status in one step, so two requests can't start the import twice.
+        cur = conn.execute(
+            f"UPDATE sources SET status = 'queued', progress = 0, error = NULL WHERE id = ? AND status IN ({placeholders})",
+            (source_id, *sources.RETRYABLE_STATUSES),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(409, "Only failed or cancelled imports can be retried")
         source = sources.get(conn, source_id)
     request.app.state.ingest.submit(source)
     return source
