@@ -8,6 +8,7 @@ import type { EngineStatus } from '../shared/types'
 
 // Generous: the first launch of the packaged engine can be slow while antivirus scans it.
 const STARTUP_TIMEOUT_MS = 60_000
+const STOP_TIMEOUT_MS = 5_000
 const MAX_LOG_LINES = 200
 const READY_PATTERN = /ENGINE_READY port=(\d+)/
 
@@ -195,7 +196,18 @@ export class EngineProcess {
   }
 
   async restart(): Promise<EngineStatus> {
+    const old = this.child
     this.stop()
+    // Two engines must not work on the same projects: wait for the old one to be gone.
+    if (old && old.exitCode === null && old.signalCode === null) {
+      await new Promise<void>((done) => {
+        const timer = setTimeout(done, STOP_TIMEOUT_MS)
+        old.once('exit', () => {
+          clearTimeout(timer)
+          done()
+        })
+      })
+    }
     return this.start()
   }
 }

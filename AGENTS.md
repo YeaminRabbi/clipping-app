@@ -123,6 +123,7 @@ engine/
   app/main.py          create_app(): token middleware, CORS, /health, /ws, includes routers, starts managers
   app/config.py        Settings from CLIP_* env vars (data_dir, bin_dir, token, models_dir)
   app/db.py            SQLite + MIGRATIONS list (append-only; PRAGMA user_version)
+  app/processes.py     ties FFmpeg children to the engine's lifetime (Windows job object)
   app/events.py        EventHub: thread-safe emit() to all WebSocket clients
   app/ffmpeg.py        locate ffmpeg/ffprobe (env override → bin/ → PATH), list hardware encoders
   app/aspects.py       ASPECTS (9:16, 4:5, 1:1, 16:9, 4:3), output_size, normalized crop ↔ pixels

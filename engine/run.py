@@ -16,6 +16,7 @@ from pathlib import Path
 import uvicorn
 
 from app.main import create_app
+from app.processes import kill_children_with_us
 
 
 def setup_logging() -> None:
@@ -36,6 +37,7 @@ def setup_logging() -> None:
 
 def main() -> None:
     setup_logging()
+    kill_children_with_us()
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
