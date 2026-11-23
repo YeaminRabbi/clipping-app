@@ -30,16 +30,38 @@ FILLER_PROMPT = "Umm, let me think like, hmm... Okay, uh, here's what I'm, um, t
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 
-def decode_audio(ffmpeg: str, media: Path) -> np.ndarray:
-    """Mono 16 kHz float samples. Decoding with our FFmpeg handles every format the app imports."""
-    result = subprocess.run(
+def decode_audio(ffmpeg: str, media: Path, duration_ms: int = 0, cancel: CancelToken | None = None) -> np.ndarray:
+    """Mono 16 kHz float samples. Decoding with our FFmpeg handles every format the app imports.
+
+    Read straight into one array of about the right size: collecting the output first and converting
+    it took two to three times the memory, a lot for a video of several hours.
+    """
+    proc = subprocess.Popen(
         [ffmpeg, "-v", "error", "-nostdin", "-i", str(media), "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-"],
-        capture_output=True,
-        creationflags=NO_WINDOW,
-    )
-    if result.returncode != 0:
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW,
+    )  # fmt: skip
+    assert proc.stdout is not None
+    samples = np.empty((duration_ms // 1000 + 5) * SAMPLE_RATE, dtype=np.float32)
+    used = 0  # bytes
+    try:
+        while True:
+            if cancel is not None:
+                cancel.raise_if_cancelled()
+            if used == samples.nbytes:
+                samples.resize(len(samples) * 5 // 4, refcheck=False)
+            # A view made each time: one kept over the resize would point at freed memory.
+            count = proc.stdout.readinto(memoryview(samples).cast("B")[used : used + 4 * SAMPLE_RATE * 30])
+            if not count:
+                break
+            used += count
+    except BaseException:
+        proc.kill()
+        raise
+    finally:
+        proc.wait()
+    if proc.returncode != 0:
         raise MediaError("Could not read the audio track for transcription")
-    return np.frombuffer(result.stdout, dtype=np.float32)
+    return samples[: used // 4]  # a view: shrinking the array would copy it
 
 
 def model_is_downloaded(models_dir: Path, name: str) -> bool:
@@ -142,7 +164,7 @@ def transcribe(
 ) -> dict[str, Any]:
     """Returns {"model", "language", "words": [{"start", "end", "text"}]} with times in ms."""
     models_dir.mkdir(parents=True, exist_ok=True)
-    audio = decode_audio(ffmpeg, media)
+    audio = decode_audio(ffmpeg, media, duration_ms, cancel)
     cancel.raise_if_cancelled()
     try:
         whisper = _load_model(models_dir, model)

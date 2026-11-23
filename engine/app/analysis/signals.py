@@ -108,28 +108,39 @@ def cached_scene_cuts(
         return cuts
 
 
-def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool) -> np.ndarray:
-    """RMS level in dBFS for each 100 ms."""
+def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool, cancel: CancelToken | None = None) -> np.ndarray:
+    """RMS level in dBFS for each 100 ms. Reads the sound in pieces, so a long video takes no more memory."""
     frames = max(1, int(duration_ms / 1000 * LOUDNESS_PER_SECOND))
     if not has_audio:
         return np.full(frames, SILENCE_FLOOR_DB)
     rate = 8000
-    result = subprocess.run(
+    window = rate // LOUDNESS_PER_SECOND
+    proc = subprocess.Popen(
         [ffmpeg, "-v", "error", "-nostdin", "-i", str(proxy), "-vn", "-ac", "1", "-ar", str(rate), "-f", "s16le", "-"],
-        capture_output=True,
-        creationflags=NO_WINDOW,
-    )
-    if result.returncode != 0:
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW,
+    )  # fmt: skip
+    assert proc.stdout is not None
+    levels: list[np.ndarray] = []
+    try:
+        # A minute at a time; a pipe's read(n) only returns less at the end.
+        while chunk := proc.stdout.read(rate * 2 * 60):
+            if cancel is not None:
+                cancel.raise_if_cancelled()
+            samples = np.frombuffer(chunk[: len(chunk) // 2 * 2], dtype=np.int16)
+            usable = len(samples) // window * window
+            if usable:
+                blocks = samples[:usable].reshape(-1, window).astype(np.float32) / 32768
+                rms = np.sqrt(np.mean(blocks**2, axis=1))
+                levels.append(np.maximum(20 * np.log10(np.maximum(rms, 1e-9)), SILENCE_FLOOR_DB))
+    except BaseException:
+        proc.kill()
+        raise
+    finally:
+        proc.wait()
+    if proc.returncode != 0:
         # Not the same as silence, which would let Tighten cut everything.
         raise MediaError("Could not measure the sound of this video")
-    samples = np.frombuffer(result.stdout[: len(result.stdout) // 2 * 2], dtype=np.int16).astype(np.float64) / 32768
-    window = rate // LOUDNESS_PER_SECOND
-    usable = len(samples) // window * window
-    if usable == 0:
-        return np.full(frames, SILENCE_FLOOR_DB)
-    rms = np.sqrt(np.mean(samples[:usable].reshape(-1, window) ** 2, axis=1))
-    db = np.maximum(20 * np.log10(np.maximum(rms, 1e-9)), SILENCE_FLOOR_DB)
-    return db
+    return np.concatenate(levels).astype(np.float64) if levels else np.full(frames, SILENCE_FLOOR_DB)
 
 
 def cached_loudness(ffmpeg: str, proxy: Path, work_dir: Path, duration_ms: int, has_audio: bool) -> np.ndarray:

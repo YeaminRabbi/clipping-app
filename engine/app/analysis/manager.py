@@ -179,7 +179,7 @@ class AnalysisManager:
             cuts = self._scene_cuts(source_id, proxy, work_dir, duration, token, done, 0.95 - done)
             token.raise_if_cancelled()
             self._update(source_id, token, stage="Measuring audio", progress=0.95)
-            levels = loudness(tools.ffmpeg.path, proxy, duration, bool(src["has_audio"]))
+            levels = loudness(tools.ffmpeg.path, proxy, duration, bool(src["has_audio"]), token)
             sig = Signals(words=words, loudness=levels, cuts=cuts, silences=silences(levels))
 
             token.raise_if_cancelled()
