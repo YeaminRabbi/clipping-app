@@ -23,6 +23,8 @@ class MediaInfo:
     audio_codec: str | None
     has_audio: bool
     size_bytes: int | None
+    # How long after the file's own start the first video frame comes (audio often starts slightly earlier).
+    video_offset_s: float = 0.0
 
 
 def _rate(value: str | None) -> Fraction | None:
@@ -31,6 +33,13 @@ def _rate(value: str | None) -> Fraction | None:
     except (ValueError, ZeroDivisionError):
         return None
     return rate if rate and rate > 0 else None
+
+
+def _seconds(value: str | None) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except ValueError:
+        return None
 
 
 def _rotation(stream: dict) -> int:
@@ -70,6 +79,8 @@ def parse_probe(data: dict) -> MediaInfo:
         width, height = height, width
 
     size = (data.get("format") or {}).get("size")
+    video_start, file_start = _seconds(video.get("start_time")), _seconds((data.get("format") or {}).get("start_time"))
+    video_offset = video_start - file_start if video_start is not None and file_start is not None else 0.0
     return MediaInfo(
         duration_ms=round(float(duration) * 1000),
         width=width,
@@ -81,6 +92,7 @@ def parse_probe(data: dict) -> MediaInfo:
         audio_codec=audio.get("codec_name") if audio else None,
         has_audio=audio is not None,
         size_bytes=int(size) if size else None,
+        video_offset_s=video_offset,
     )
 
 

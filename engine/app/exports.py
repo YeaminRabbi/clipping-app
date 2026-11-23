@@ -351,6 +351,7 @@ class ExportManager:
                     cancel=token,
                     on_progress=on_progress,
                     segments=timemap.segments if timemap else None,
+                    video_offset_s=info.video_offset_s,
                 )
 
             try:

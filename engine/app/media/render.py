@@ -195,28 +195,64 @@ AUDIO_BLOCK = 16
 AUDIO_RATE = 48000
 
 
-def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: bool) -> tuple[float, Fraction, str]:
-    """(seek seconds, total duration, graph) keeping only the frames and audio inside `segments`.
+# How long before the first wanted frame decoding starts, so that frame is already there when needed.
+PREROLL_S = 1.0
 
-    Uses select/aselect and renumbers timestamps, which streams through the source once instead of
-    buffering every segment. Video picks frames by number (half-frame margins, as in trim_window);
-    audio is cut at the exact frame times, so picture and sound stay in sync across every join.
+
+def seek_point(start_frame: int, fps: str, video_offset_s: float = 0.0, preroll_s: float = PREROLL_S) -> tuple[float, float]:
+    """(seek seconds, time of the first wanted frame after that seek).
+
+    Seeking lands a little before the cut. The graph then shifts timestamps so the first wanted frame
+    is at 0 and puts frames on a constant grid from there. Frames end up in the middle of their grid
+    slot, so timestamps rounded by the file format (MKV stores whole milliseconds) can't push a frame
+    into its neighbour's slot.
     """
     rate = Fraction(fps)
+    # Where the video's own frames sit within a slot (the audio often starts a fraction earlier).
+    phase = video_offset_s * float(rate)
+    phase = (phase - round(phase)) / float(rate)
+    start = float(start_frame / rate) + phase
+    seek = max(0.0, round(start - preroll_s, 6))
+    return seek, start - seek
+
+
+def grid_filters(zero: float, fps: str, has_audio: bool) -> str:
+    """The source as [grid] (constant frame rate, first wanted frame at 0) and [sound] (same clock).
+
+    Variable frame rate becomes constant here, before anything counts frames. Audio gaps and late
+    starts are filled with silence, so cutting it by time stays in step with the picture.
+    """
+    graph = f"[0:v]setpts=PTS-({zero:.6f})/TB,fps={fps}:start_time=0[grid]"
+    if has_audio:
+        graph += f";[0:a:0]asetpts=PTS-({zero:.6f})/TB,aresample={AUDIO_RATE}:async=1:min_hard_comp=0.02:first_pts=0,asetnsamples=n={AUDIO_BLOCK}:p=0[sound]"
+    return graph
+
+
+def segment_frames(segments: list[tuple[float, float]], fps: str) -> list[tuple[int, int]]:
+    """Kept segments (ms) as frame numbers, end exclusive."""
+    rate = Fraction(fps)
     frames = [(round(a * rate / 1000), round(b * rate / 1000)) for a, b in segments]
-    frames = [(fa, fb) for fa, fb in frames if fb > fa]
-    seek = max(0.0, float((frames[0][0] - Fraction(1, 2)) / rate))
+    return [(fa, fb) for fa, fb in frames if fb > fa]
+
+
+def segment_select(frames: list[tuple[int, int]], fps: str, has_audio: bool) -> tuple[Fraction, str]:
+    """(total duration, graph from [grid]/[sound] to [vsel]/[asel]) keeping only `frames`, back to back.
+
+    Uses select/aselect and renumbers timestamps, which streams through the source once instead of
+    buffering every segment. Video is picked by frame number on the constant grid; audio is cut at
+    the same frames' times, so picture and sound stay in sync across every join.
+    """
+    rate = Fraction(fps)
+    first = frames[0][0]
     video_terms, audio_terms = [], []
     for fa, fb in frames:
-        va, vb = float((fa - Fraction(1, 2)) / rate) - seek, float((fb - Fraction(1, 2)) / rate) - seek
-        aa, ab = float(fa / rate) - seek, float(fb / rate) - seek
-        video_terms.append(f"between(t,{va:.6f},{vb - 1e-6:.6f})")
-        audio_terms.append(f"between(t,{aa:.6f},{ab - 1e-6:.6f})")
+        video_terms.append(f"between(n,{fa - first},{fb - first - 1})")
+        audio_terms.append(f"between(t,{float((fa - first) / rate):.6f},{float((fb - first) / rate) - 1e-6:.6f})")
     duration = sum((Fraction(fb - fa) / rate for fa, fb in frames), Fraction(0))
-    graph = f"[0:v]select='{'+'.join(video_terms)}',setpts=N/({rate.numerator}/{rate.denominator})/TB[vsel]"
+    graph = f"[grid]select='{'+'.join(video_terms)}',setpts=N/({rate.numerator}/{rate.denominator})/TB[vsel]"
     if has_audio:
-        graph += f";[0:a]aresample={AUDIO_RATE},asetnsamples=n={AUDIO_BLOCK}:p=0,aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
-    return seek, duration, graph
+        graph += f";[sound]aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
+    return duration, graph
 
 
 def output_frame_count(duration: Fraction, output_fps: str) -> int:
@@ -240,6 +276,7 @@ def render_clip(
     cancel: CancelToken,
     on_progress: Callable[[float], None] | None = None,
     segments: list[tuple[float, float]] | None = None,
+    video_offset_s: float = 0.0,
 ) -> None:
     """Render [start_ms, end_ms], or only the kept `segments` inside it, played back to back.
 
@@ -249,11 +286,15 @@ def render_clip(
     audio_map = "0:a:0?"
     input_limit: list[str] = []
     if segments and len(segments) > 1:
-        seek, duration, select_graph = segment_select(segments, source_fps, has_audio)
-        video_filter = select_graph + ";" + video_filter.replace("[0:v]", "[vsel]")
+        frames = segment_frames(segments, source_fps)
+        seek, zero = seek_point(frames[0][0], source_fps, video_offset_s)
+        duration, select_graph = segment_select(frames, source_fps, has_audio)
+        video_filter = ";".join(
+            [grid_filters(zero, source_fps, has_audio), select_graph, video_filter.replace("[0:v]", "[vsel]")]
+        )
         audio_map = "[asel]"
-        # Stop reading the source at the end of the last segment.
-        input_limit = ["-t", f"{segments[-1][1] / 1000 - seek + 0.2:.6f}"]
+        # Stop reading the source a little after the last segment.
+        input_limit = ["-t", f"{zero + float((frames[-1][1] - frames[0][0]) / Fraction(source_fps)) + 0.5:.6f}"]
     audio = ["-map", audio_map, "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio else ["-an"]
     tmp = dest.with_name(dest.stem + ".partial" + dest.suffix)
     # The graph goes in a file: a moving crop's expression can exceed the command-line length limit.
