@@ -27,7 +27,7 @@ from .edit.service import plan_for_clip, tighten_settings
 from .edit.timemap import TimeMap
 from .events import EventHub
 from .media import CancelToken, Cancelled, MediaError
-from .media.probe import probe
+from .media.probe import preroll_for, probe
 from .media.render import (
     CPU_ENCODERS,
     FitOptions,
@@ -330,6 +330,8 @@ class ExportManager:
             else:
                 caption_dir, overlay = None, ""
 
+            first_ms = round(timemap.segments[0][0]) if timemap else row["start_ms"]
+            preroll = preroll_for(tools.ffprobe.path, src, info, first_ms)
             encoder = pick_encoder(tools.ffmpeg.path, preset["codec"], preset["hardware"], tools.hw_encoders)
             last = {"t": 0.0}
 
@@ -360,6 +362,7 @@ class ExportManager:
                     on_progress=on_progress,
                     segments=timemap.segments if timemap else None,
                     video_offset_s=info.video_offset_s,
+                    preroll_s=preroll,
                 )
 
             try:

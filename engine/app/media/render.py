@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ..ffmpeg import HW_ENCODERS, NO_WINDOW
 from . import CancelToken
+from .probe import PREROLL_S
 from .transcode import run_ffmpeg
 
 QUALITY_LEVELS = ("high", "balanced", "small")
@@ -189,10 +190,6 @@ AUDIO_BLOCK = 16
 AUDIO_RATE = 48000
 
 
-# How long before the first wanted frame decoding starts, so that frame is already there when needed.
-PREROLL_S = 1.0
-
-
 def seek_point(start_frame: int, fps: str, video_offset_s: float = 0.0, preroll_s: float = PREROLL_S) -> tuple[float, float]:
     """(seek seconds, time of the first wanted frame after that seek).
 
@@ -271,6 +268,7 @@ def render_clip(
     on_progress: Callable[[float], None] | None = None,
     segments: list[tuple[float, float]] | None = None,
     video_offset_s: float = 0.0,
+    preroll_s: float = PREROLL_S,
 ) -> None:
     """Render [start_ms, end_ms], or only the kept `segments` inside it, played back to back.
 
@@ -279,7 +277,7 @@ def render_clip(
     """
     joined = bool(segments and len(segments) > 1)
     frames = segment_frames(segments, source_fps) if joined else [clip_frames(start_ms, end_ms, source_fps)]
-    seek, zero = seek_point(frames[0][0], source_fps, video_offset_s)
+    seek, zero = seek_point(frames[0][0], source_fps, video_offset_s, preroll_s)
     length = Fraction(frames[-1][1] - frames[0][0]) / Fraction(source_fps)
     graphs, duration, video_in, audio_map = [grid_filters(zero, source_fps, has_audio)], length, "[grid]", "[sound]"
     if joined:

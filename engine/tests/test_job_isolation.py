@@ -58,7 +58,9 @@ def renders(monkeypatch) -> Renders:
     monkeypatch.setattr("app.exports.render_clip", fake)
     monkeypatch.setattr(
         "app.exports.probe",
-        lambda ffprobe, path: SimpleNamespace(fps_rational="30/1", width=1920, height=1080, has_audio=False, video_offset_s=0.0),
+        lambda ffprobe, path: SimpleNamespace(
+            fps_rational="30/1", width=1920, height=1080, has_audio=False, video_offset_s=0.0, container="mov,mp4"
+        ),
     )
     return fake
 

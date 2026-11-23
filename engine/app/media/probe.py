@@ -34,6 +34,8 @@ class MediaInfo:
     size_bytes: int | None
     # How long after the file's own start the first video frame comes (audio often starts slightly earlier).
     video_offset_s: float = 0.0
+    container: str = ""  # FFmpeg's format name, e.g. "mov,mp4,m4a,3gp,3g2,mj2" or "mpegts"
+    start_s: float = 0.0  # the file's own first timestamp; MPEG-TS rarely starts at 0
 
 
 def _rate(value: str | None) -> Fraction | None:
@@ -130,6 +132,8 @@ def parse_probe(data: dict) -> MediaInfo:
         has_audio=audio is not None,
         size_bytes=int(size) if size else None,
         video_offset_s=video_offset,
+        container=(data.get("format") or {}).get("format_name") or "",
+        start_s=file_start or 0.0,
     )
 
 
@@ -171,4 +175,42 @@ def _sample_frame_times(ffprobe: str, path: Path, duration_s: float, data: dict)
     except (OSError, subprocess.SubprocessError):
         return []
     times = (_seconds(line.strip().rstrip(",")) for line in result.stdout.splitlines())
+    return [t for t in times if t is not None]
+
+
+# Formats with an index, where a seek lands on the keyframe before the wanted time.
+INDEXED_FORMATS = ("mov", "matroska", "webm")
+PREROLL_S = 1.0  # decode at least this much before a cut
+
+
+def preroll_for(ffprobe: str, path: Path, info: MediaInfo, start_ms: int) -> float:
+    """How long before `start_ms` (ms) a render should start reading so that frame is decoded.
+
+    Formats without an index (MPEG-TS above all) are entered at about the wanted time, and everything
+    up to the next keyframe is lost; so reading must start before the last keyframe ahead of the cut.
+    """
+    if any(name in INDEXED_FORMATS for name in info.container.split(",")):
+        return PREROLL_S
+    start_s = start_ms / 1000
+    for back in (15, 60, 240):
+        begin = max(0.0, start_s - back)
+        keyframes = [t for t in _keyframe_times(ffprobe, path, info.start_s + begin, info.start_s + start_s) if t <= info.start_s + start_s - 0.1]
+        if keyframes:
+            return max(PREROLL_S, start_s - (max(keyframes) - info.start_s) + 0.5)
+        if begin == 0:
+            break
+    return start_s  # none found: read from the beginning
+
+
+def _keyframe_times(ffprobe: str, path: Path, begin: float, end: float) -> list[float]:
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0", "-read_intervals", f"{begin:.3f}%{end:.3f}",
+             "-show_entries", "packet=pts_time,flags", "-of", "json", str(path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW,
+        )  # fmt: skip
+        packets = json.loads(result.stdout or "{}").get("packets", [])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    times = (_seconds(p.get("pts_time")) for p in packets if "K" in p.get("flags", ""))
     return [t for t in times if t is not None]

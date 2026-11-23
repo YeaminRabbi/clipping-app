@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from app.media import CancelToken
-from app.media.probe import probe
+from app.media.probe import preroll_for, probe
 from app.media.render import build_video_filter, render_clip
 from app.media.transcode import make_proxy
 from conftest import FFMPEG, FFPROBE, needs_ffmpeg
@@ -45,15 +45,19 @@ def read_numbers(path: Path) -> np.ndarray:
     return np.rint(frames.mean(axis=(1, 2)) / 8).astype(int)
 
 
+def render_args(src: Path, info, start_ms: int, end_ms: int) -> dict:
+    return dict(
+        start_ms=start_ms, end_ms=end_ms, source_fps=info.fps_rational, output_fps=info.fps_rational, has_audio=info.has_audio,
+        video_filter=build_video_filter("manual", 64, 64, info.fps_rational, (64, 64, 0, 0), "yuv420p"),
+        encoder="libx264", quality="high", cancel=CancelToken(), video_offset_s=info.video_offset_s,
+        preroll_s=preroll_for(FFPROBE, src, info, start_ms),
+    )  # fmt: skip
+
+
 def cut(src: Path, dest: Path, start_frame: int, count: int):
     info = probe(FFPROBE, src)
     rate = Fraction(info.fps_rational)
-    render_clip(
-        FFMPEG, src, dest, start_ms=round(start_frame * 1000 / rate), end_ms=round((start_frame + count) * 1000 / rate),
-        source_fps=info.fps_rational, output_fps=info.fps_rational, has_audio=info.has_audio,
-        video_filter=build_video_filter("manual", 64, 64, info.fps_rational, (64, 64, 0, 0), "yuv420p"),
-        encoder="libx264", quality="high", cancel=CancelToken(), video_offset_s=info.video_offset_s,
-    )  # fmt: skip
+    render_clip(FFMPEG, src, dest, **render_args(src, info, round(start_frame * 1000 / rate), round((start_frame + count) * 1000 / rate)))
     return info
 
 
@@ -81,6 +85,29 @@ def test_no_frame_is_repeated_or_dropped(tmp_path, ext, rate):
 
 
 @needs_ffmpeg
+@pytest.mark.parametrize("rate", RATES)
+def test_transport_streams_are_cut_at_the_right_frame(tmp_path, rate):
+    # Keyframes 4 s or more apart: a seek lands between them, and everything up to the next one is lost.
+    check_cuts(numbered(tmp_path / "src.ts", rate, gop=240), tmp_path)
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("gop", [30, 1000])
+def test_transport_streams_with_many_or_one_keyframe(tmp_path, gop):
+    check_cuts(numbered(tmp_path / "src.ts", "30", gop=gop), tmp_path, starts=(0, 203, 331))
+
+
+@needs_ffmpeg
+def test_preroll_reaches_back_to_a_keyframe_only_where_seeking_needs_it(tmp_path):
+    ts = numbered(tmp_path / "src.ts", "30", gop=120)
+    info = probe(FFPROBE, ts)
+    assert info.container == "mpegts" and info.start_s > 0.5
+    assert 3.4 <= preroll_for(FFPROBE, ts, info, 11_000) <= 4.0  # the keyframe at 8 s, and a little
+    mp4 = numbered(tmp_path / "src.mp4", "30", gop=120)
+    assert preroll_for(FFPROBE, mp4, probe(FFPROBE, mp4), 11_000) == 1.0
+
+
+@needs_ffmpeg
 def test_no_frame_is_repeated_or_dropped_without_sound(tmp_path):
     check_cuts(numbered(tmp_path / "src.mkv", "60", audio=False), tmp_path)
 
@@ -98,17 +125,12 @@ def test_export_shows_the_frames_the_preview_shows(tmp_path, ext):
 
 
 @needs_ffmpeg
-@pytest.mark.parametrize("name, vfr", [("a.mp4", False), ("a.mkv", False), ("vfr.mkv", True), ("vfr.mp4", True)])
+@pytest.mark.parametrize("name, vfr", [("a.mp4", False), ("a.mkv", False), ("vfr.mkv", True), ("vfr.mp4", True), ("a.ts", False)])
 def test_plain_cuts_keep_sound_in_sync(tmp_path, name, vfr):
     src = flash_beep(tmp_path / name, vfr=vfr)
     info = probe(FFPROBE, src)
     for start in (2300, 2317, 6950):
-        render_clip(
-            FFMPEG, src, tmp_path / "out.mp4", start_ms=start, end_ms=start + 10000, source_fps=info.fps_rational,
-            output_fps=info.fps_rational, has_audio=True,
-            video_filter=build_video_filter("manual", 64, 64, info.fps_rational, (64, 64, 0, 0), "yuv420p"),
-            encoder="libx264", quality="high", cancel=CancelToken(), video_offset_s=info.video_offset_s,
-        )  # fmt: skip
+        render_clip(FFMPEG, src, tmp_path / "out.mp4", **render_args(src, info, start, start + 10000))
         offsets = av_offsets_ms(tmp_path / "out.mp4")
         assert len(offsets) >= 9
         assert abs(sum(offsets) / len(offsets)) < 1000 / 60, offsets
