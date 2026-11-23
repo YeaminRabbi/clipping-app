@@ -137,6 +137,11 @@ def retry_export(job_id: int, request: Request) -> dict[str, Any]:
         )
         if cur.rowcount == 0:
             raise HTTPException(409, "Only failed or cancelled exports can be retried")
+        # The batch's ZIP, if there is one, lacks this video: a new one is made when it's done.
+        conn.execute(
+            "UPDATE export_batches SET zip_path = NULL, error = NULL WHERE id = (SELECT batch_id FROM export_jobs WHERE id = ?)",
+            (job_id,),
+        )
         job = exports.get_job(conn, job_id)
     request.app.state.exports.submit(job)
     return job

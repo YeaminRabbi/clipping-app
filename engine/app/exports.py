@@ -206,7 +206,7 @@ class ExportManager:
         token = CancelToken()
         self.tokens[job["id"]] = token
         self.events.emit("export", job)
-        self.executor.submit(self._run, job["id"], token)
+        self.executor.submit(self._run, job["id"], token, job["batch_id"])
 
     def cancel(self, job_id: int) -> bool:
         token = self.tokens.get(job_id)
@@ -251,7 +251,7 @@ class ExportManager:
         if self.tokens.get(job_id) is token:
             del self.tokens[job_id]
 
-    def _run(self, job_id: int, token: CancelToken) -> None:
+    def _run(self, job_id: int, token: CancelToken, batch_id: str | None = None) -> None:
         with self.db.connect() as conn:
             row = conn.execute(
                 """SELECT j.preset_json, j.output_name, j.batch_id, j.burn_captions, j.export_srt,
@@ -268,6 +268,9 @@ class ExportManager:
             if row is not None:
                 self._update(job_id, token, status="cancelled", error=None)
             self._release(job_id, token)
+            # This may have been the job its batch was waiting for.
+            if batch_id:
+                self._finish_batch(batch_id)
             return
 
         dest: Path | None = None
@@ -461,8 +464,9 @@ class ExportManager:
                         for f in files:
                             zf.write(f, f.name)
                     tmp.replace(target)
-                    conn.execute("UPDATE export_batches SET zip_path = ? WHERE id = ?", (str(target), batch_id))
+                    conn.execute("UPDATE export_batches SET zip_path = ?, error = NULL WHERE id = ?", (str(target), batch_id))
                 except OSError as err:
+                    tmp.unlink(missing_ok=True)
                     conn.execute("UPDATE export_batches SET error = ? WHERE id = ?", (f"Could not create the ZIP: {err}", batch_id))
             updated = conn.execute("SELECT * FROM export_batches WHERE id = ?", (batch_id,)).fetchone()
         self.events.emit("export_batch", batch_to_dict(updated))

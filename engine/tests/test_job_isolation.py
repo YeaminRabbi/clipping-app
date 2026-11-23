@@ -1,9 +1,10 @@
-"""A deleted or cancelled job must never change another job (F-04). No FFmpeg needed: rendering and
+"""A deleted or cancelled job must never change another job (F-04), and ZIP batches end up complete (F-16). No FFmpeg needed: rendering and
 probing are replaced by functions the test holds open."""
 
 import sqlite3
 import threading
 import time
+import zipfile
 from types import SimpleNamespace
 
 import pytest
@@ -233,3 +234,37 @@ def test_work_folders_are_separate_and_cleared_at_startup(client):
     (work / "export-1-abc").mkdir(parents=True)
     client.app.state.exports.start()
     assert not work.exists()
+
+
+# --- ZIP batches ---------------------------------------------------------------------------------
+
+
+def zip_of(client, project) -> list[str] | None:
+    path = client.get(f"/projects/{project['id']}/export-batches").json()[0]["zip_path"]
+    return sorted(zipfile.ZipFile(path).namelist()) if path else None
+
+
+@pytest.mark.parametrize("how", ["cancel", "delete"])
+def test_zip_is_made_when_the_last_waiting_job_is_cancelled_or_deleted(client, project, source_id, tmp_path, renders, how):
+    export(client, tmp_path, [make_clip(client, source_id, "blocker")])  # keeps one worker busy
+    clips = [make_clip(client, source_id, t) for t in ("first", "second")]
+    jobs = export(client, tmp_path, clips, zip=True)
+    eventually(lambda: status_of(client, project, jobs[0]["id"]) == "rendering")
+    if how == "cancel":
+        client.post(f"/exports/{jobs[1]['id']}/cancel")
+    else:
+        client.delete(f"/clips/{clips[1]}")
+    renders.open.add("first")
+    assert eventually(lambda: zip_of(client, project)) == ["first.mp4"]
+    renders.open.add("blocker")
+
+
+def test_retrying_a_job_makes_a_complete_zip(client, project, source_id, tmp_path, renders):
+    jobs = export(client, tmp_path, [make_clip(client, source_id, t) for t in ("one", "two")], zip=True)
+    client.post(f"/exports/{jobs[1]['id']}/cancel")
+    eventually(lambda: status_of(client, project, jobs[1]["id"]) == "cancelled")
+    renders.open.add("one")
+    assert eventually(lambda: zip_of(client, project)) == ["one.mp4"]
+    renders.open.add("two")
+    client.post(f"/exports/{jobs[1]['id']}/retry")
+    assert eventually(lambda: (z := zip_of(client, project)) and len(z) == 2 and z) == ["one.mp4", "two.mp4"]
