@@ -10,7 +10,7 @@ import pytest
 
 from app.aspects import crop_pixels, default_crop, output_size
 from app.exports import render_name
-from app.media.render import output_frame_count, trim_window
+from app.media.render import clip_frames, output_frame_count, seek_point
 from conftest import FFMPEG, FFPROBE, needs_ffmpeg, wait_for
 
 # --- pure geometry / naming -------------------------------------------------------------------
@@ -38,15 +38,26 @@ def test_crop_pixels_even_inside_frame_and_exact_aspect():
     assert abs(w / h - 9 / 16) < 0.01
 
 
-def test_trim_window_selects_exact_frames():
-    seek, duration = trim_window(1000, 2000, "30")
-    assert seek == pytest.approx(29.5 / 30)
-    assert duration == 1
+def test_clip_frames_and_seek_select_exact_frames():
+    def count(start, end, fps, out):
+        a, b = clip_frames(start, end, fps)
+        return output_frame_count(Fraction(b - a) / Fraction(fps), out)
+
+    assert clip_frames(1000, 2000, "30") == (30, 60)
+    # Decoding starts a second early; the clip's first frame is that far in.
+    assert seek_point(90, "30") == (2.0, 1.0)
+    seek, zero = seek_point(15, "30")
+    assert seek == 0 and zero == pytest.approx(0.5)
+    # Frames 8 ms later than the file's start stay centred in their slots; a whole frame later is the next slot.
+    seek, zero = seek_point(120, "60", video_offset_s=0.004)
+    assert seek + zero == pytest.approx(2.004)
+    seek, zero = seek_point(120, "60", video_offset_s=1 / 60)
+    assert seek + zero == pytest.approx(2.0)
     # Milliseconds that aren't on a frame boundary snap to the nearest frame.
-    seek, duration = trim_window(1033, 1967, "30000/1001")
-    assert duration * Fraction(30000, 1001) == 28
-    assert output_frame_count(trim_window(2000, 8067, "30")[1], "30") == 182
-    assert output_frame_count(trim_window(2000, 8067, "30")[1], "60") == 364
+    a, b = clip_frames(1033, 1967, "30000/1001")
+    assert b - a == 28
+    assert count(2000, 8067, "30", "30") == 182
+    assert count(2000, 8067, "30", "60") == 364
 
 
 def test_render_name_sanitizes():

@@ -10,6 +10,7 @@ import time
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +32,10 @@ from .media.render import (
     CPU_ENCODERS,
     FitOptions,
     build_video_filter,
+    clip_frames,
     pick_encoder,
     pixel_format,
     render_clip,
-    trim_window,
 )
 from .reframe.service import keyframes_cover, track_clip
 from .reframe.track import crop_at
@@ -296,8 +297,9 @@ class ExportManager:
                     # The joined segments start at output time 0, so the re-timed path needs no seek offset.
                     path = crop_path(timemap.map_keyframes(keyframes, crop_at), row["aspect"], info.width, info.height, 0.0)
                 else:
-                    seek, _ = trim_window(row["start_ms"], row["end_ms"], info.fps_rational)
-                    path = crop_path(keyframes, row["aspect"], info.width, info.height, seek)
+                    # The render's clock starts at the clip's first frame.
+                    start = float(clip_frames(row["start_ms"], row["end_ms"], info.fps_rational)[0] / Fraction(info.fps_rational))
+                    path = crop_path(keyframes, row["aspect"], info.width, info.height, start)
             elif row["mode"] != "fit":
                 crop = keyframes[0] if keyframes else default_crop(row["aspect"], info.width, info.height)
                 crop_px = crop_pixels(crop, row["aspect"], info.width, info.height)

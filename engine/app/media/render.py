@@ -91,7 +91,7 @@ class FitOptions:
 
 @dataclass
 class CropPath:
-    """A moving crop: fixed size, position keyframed over time (seconds relative to the seek point)."""
+    """A moving crop: fixed size, position keyframed over time (seconds from the clip's first frame)."""
 
     w: int
     h: int
@@ -175,17 +175,11 @@ def _fit_filter(out_w: int, out_h: int, fps: str, tail: str, opt: FitOptions) ->
     )
 
 
-def trim_window(start_ms: int, end_ms: int, fps: str) -> tuple[float, Fraction]:
-    """(seek seconds, exact duration) that select exactly the frames from start to end.
-
-    Times are snapped to frame numbers, then the seek point is put half a frame early so rounding in
-    the stored milliseconds can never drop the first frame.
-    """
+def clip_frames(start_ms: int, end_ms: int, fps: str) -> tuple[int, int]:
+    """The frames from start to end (end exclusive, at least one). Times snap to the nearest frame."""
     rate = Fraction(fps)
-    start_frame = round(start_ms * rate / 1000)
-    end_frame = max(start_frame + 1, round(end_ms * rate / 1000))
-    seek = max(0.0, float((start_frame - Fraction(1, 2)) / rate))
-    return seek, (end_frame - start_frame) / rate
+    start = round(start_ms * rate / 1000)
+    return start, max(start + 1, round(end_ms * rate / 1000))
 
 
 # Audio is split into blocks this small (0.3 ms at 48 kHz) before cutting. Decoders hand out much bigger
@@ -224,7 +218,7 @@ def grid_filters(zero: float, fps: str, has_audio: bool) -> str:
     """
     graph = f"[0:v]setpts=PTS-({zero:.6f})/TB,fps={fps}:start_time=0[grid]"
     if has_audio:
-        graph += f";[0:a:0]asetpts=PTS-({zero:.6f})/TB,aresample={AUDIO_RATE}:async=1:min_hard_comp=0.02:first_pts=0,asetnsamples=n={AUDIO_BLOCK}:p=0[sound]"
+        graph += f";[0:a:0]asetpts=PTS-({zero:.6f})/TB,aresample={AUDIO_RATE}:async=1:min_hard_comp=0.02:first_pts=0[sound]"
     return graph
 
 
@@ -251,7 +245,7 @@ def segment_select(frames: list[tuple[int, int]], fps: str, has_audio: bool) -> 
     duration = sum((Fraction(fb - fa) / rate for fa, fb in frames), Fraction(0))
     graph = f"[grid]select='{'+'.join(video_terms)}',setpts=N/({rate.numerator}/{rate.denominator})/TB[vsel]"
     if has_audio:
-        graph += f";[sound]aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
+        graph += f";[sound]asetnsamples=n={AUDIO_BLOCK}:p=0,aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
     return duration, graph
 
 
@@ -280,21 +274,20 @@ def render_clip(
 ) -> None:
     """Render [start_ms, end_ms], or only the kept `segments` inside it, played back to back.
 
-    `video_filter` reads the source as [0:v]; for segments it's fed the joined frames instead.
+    `video_filter` is written as reading the source, [0:v]; it's fed the source on a constant frame
+    grid that starts at the clip, or the joined frames for segments.
     """
-    seek, duration = trim_window(start_ms, end_ms, source_fps)
-    audio_map = "0:a:0?"
-    input_limit: list[str] = []
-    if segments and len(segments) > 1:
-        frames = segment_frames(segments, source_fps)
-        seek, zero = seek_point(frames[0][0], source_fps, video_offset_s)
+    joined = bool(segments and len(segments) > 1)
+    frames = segment_frames(segments, source_fps) if joined else [clip_frames(start_ms, end_ms, source_fps)]
+    seek, zero = seek_point(frames[0][0], source_fps, video_offset_s)
+    length = Fraction(frames[-1][1] - frames[0][0]) / Fraction(source_fps)
+    graphs, duration, video_in, audio_map = [grid_filters(zero, source_fps, has_audio)], length, "[grid]", "[sound]"
+    if joined:
         duration, select_graph = segment_select(frames, source_fps, has_audio)
-        video_filter = ";".join(
-            [grid_filters(zero, source_fps, has_audio), select_graph, video_filter.replace("[0:v]", "[vsel]")]
-        )
-        audio_map = "[asel]"
-        # Stop reading the source a little after the last segment.
-        input_limit = ["-t", f"{zero + float((frames[-1][1] - frames[0][0]) / Fraction(source_fps)) + 0.5:.6f}"]
+        graphs.append(select_graph)
+        video_in, audio_map = "[vsel]", "[asel]"
+    graphs.append(video_filter.replace("[0:v]", video_in))
+    video_filter = ";".join(graphs)
     audio = ["-map", audio_map, "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio else ["-an"]
     tmp = dest.with_name(dest.stem + ".partial" + dest.suffix)
     # The graph goes in a file: a moving crop's expression can exceed the command-line length limit.
@@ -303,7 +296,8 @@ def render_clip(
     # An exact frame count for video: a printed duration is rounded and can let one extra frame in.
     # The duration still bounds the audio.
     args = [
-        "-ss", f"{seek:.6f}", *input_limit, "-i", str(src), "-t", f"{float(duration):.6f}",
+        # Reading stops a little after the last wanted frame.
+        "-ss", f"{seek:.6f}", "-t", f"{zero + float(length) + 0.5:.6f}", "-i", str(src), "-t", f"{float(duration):.6f}",
         "-/filter_complex", str(graph), "-map", "[v]", "-r", output_fps,
         "-frames:v", str(output_frame_count(duration, output_fps)),
         *encoder_args(encoder, quality),

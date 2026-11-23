@@ -50,8 +50,8 @@ def default_crop(aspect: str, src_w: int, src_h: int) -> dict[str, float]:
     return {"x": (1 - w) / 2, "y": (1 - h) / 2, "w": w, "h": h}
 
 
-def crop_path(keyframes: list[dict], aspect: str, src_w: int, src_h: int, seek_s: float):
-    """Tracked keyframes (source ms, normalized) -> a pixel CropPath timed from the render's seek point."""
+def crop_path(keyframes: list[dict], aspect: str, src_w: int, src_h: int, start_s: float):
+    """Tracked keyframes (source ms, normalized) -> a pixel CropPath timed from the render's start (source seconds)."""
     from .media.render import CropPath
 
     w, h, _, _ = crop_pixels(keyframes[0], aspect, src_w, src_h)
@@ -59,7 +59,7 @@ def crop_path(keyframes: list[dict], aspect: str, src_w: int, src_h: int, seek_s
     for kf in keyframes:
         x = min(max(0, round(kf["x"] * src_w)), src_w - w)
         y = min(max(0, round(kf["y"] * src_h)), src_h - h)
-        points.append((kf["t"] / 1000 - seek_s, x, y))
+        points.append((kf["t"] / 1000 - start_s, x, y))
     return CropPath(w=w, h=h, points=points)
 
 
