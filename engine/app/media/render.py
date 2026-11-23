@@ -275,7 +275,7 @@ def render_clip(
     `video_filter` is written as reading the source, [0:v]; it's fed the source on a constant frame
     grid that starts at the clip, or the joined frames for segments.
     """
-    joined = bool(segments and len(segments) > 1)
+    joined = bool(segments)
     frames = segment_frames(segments, source_fps) if joined else [clip_frames(start_ms, end_ms, source_fps)]
     seek, zero = seek_point(frames[0][0], source_fps, video_offset_s, preroll_s)
     length = Fraction(frames[-1][1] - frames[0][0]) / Fraction(source_fps)

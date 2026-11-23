@@ -220,3 +220,22 @@ def test_tighten_all_on_export_and_smart_framing(client, project, tight_source, 
     colors = _frame_colors(job["output_path"])
     assert colors.count("green") == 0 and len(colors) < 150, "clips without their own setting are tightened too"
     assert job["mode"] == "smart"
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("start, end", [(1500, 6000), (0, 4650)])
+def test_a_cut_only_at_the_start_or_end_is_exported(client, project, tight_source, tmp_path, start, end):
+    """One segment is left, which used to be taken for "nothing to cut"."""
+    clip = client.post(f"/sources/{tight_source['id']}/clips", json={"start_ms": start, "end_ms": end}).json()
+    if start:
+        # "Hello" ends at 1.8 s: leave only the pause, the filler and "world" after it.
+        clip = client.patch(f"/clips/{clip['id']}", json={"start_ms": 4000}).json()
+    else:
+        clip = client.patch(f"/clips/{clip['id']}", json={"end_ms": 4600}).json()
+    client.patch(f"/clips/{clip['id']}", json={"tighten": {"remove_fillers": True, "remove_pauses": True, "max_pause_ms": 500}})
+    plan = client.get(f"/clips/{clip['id']}/cut-plan").json()
+    assert len(plan["segments"]) == 1 and plan["removed_ms"] > 300, plan
+    job = _export(client, project["id"], clip["id"], tmp_path / "out")
+    colors = _frame_colors(job["output_path"])
+    assert len(colors) == round(plan["duration_ms"] * 30 / 1000)
+    assert colors.count("green") <= 1, "the filler is gone"

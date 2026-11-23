@@ -411,7 +411,8 @@ class ExportManager:
         if tighten is None:
             return None
         plan = plan_for_clip(self.settings, clip, src, tighten, token, transcribe_if_needed=True)
-        return TimeMap(plan.segments) if plan and len(plan.segments) > 1 else None
+        # Cuts at the very start or end leave one, shorter, segment.
+        return TimeMap(plan.segments) if plan and plan.cuts else None
 
     def _captions(self, row, token: CancelToken, timemap: TimeMap | None = None):
         """Cues and style for a job's clip, transcribing the source first if it never was.
