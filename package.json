@@ -14,8 +14,9 @@
     "test:desktop": "node --experimental-strip-types --test \"apps/desktop/tests/*.test.mjs\"",
     "test:engine": "node scripts/run-engine-tests.mjs",
     "build:engine": "node scripts/build-engine.mjs",
-    "dist": "npm run build:engine && npm --workspace apps/desktop run dist",
-    "release": "npm run build:engine && npm --workspace apps/desktop run release",
+    "licenses": "node scripts/collect-licenses.mjs",
+    "dist": "npm run licenses && npm run build:engine && npm --workspace apps/desktop run dist",
+    "release": "npm run licenses && npm run build:engine && npm --workspace apps/desktop run release",
     "clip": "node scripts/clip.mjs"
   }
 }

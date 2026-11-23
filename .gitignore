@@ -20,6 +20,7 @@ bin/*
 .cache/
 
 # Build output
+apps/desktop/licenses-out/
 engine/build/
 engine/dist/
 apps/desktop/release/

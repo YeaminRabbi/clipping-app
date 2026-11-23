@@ -85,7 +85,7 @@ the npm scripts directly.
 | Engine tests | `npm run test:engine` (pytest in the venv; extra args pass through, e.g. `npm run test:engine -- tests/test_editing.py -k export`) |
 | Drive the running app | `node scripts/clip.mjs <command>` (see "Driving the app" above) |
 | Run the engine alone | `cd engine && .venv/Scripts/python run.py --port 8765` (no auth, data in `.data/`) |
-| Build the installer | `npm run dist` (PyInstaller engine + electron-builder) |
+| Build the installer | `npm run dist` (collects licenses, PyInstaller engine + electron-builder) |
 
 Prerequisites: Node 22.12+, Python 3.11+, FFmpeg. On this machine FFmpeg was installed with
 `winget install Gyan.FFmpeg` and copied into `bin/` (git ignores `bin/`).
@@ -139,6 +139,7 @@ engine/
   tests/               pytest; conftest makes synthetic videos with FFmpeg; speech tests use Windows TTS
 
 scripts/               clip.mjs (agent CLI for the running app), setup, bundle-ffmpeg, run-engine-tests, build-engine (PyInstaller), paths.mjs
+                       collect-licenses.mjs gathers license texts for the installer (`licenses/` holds the ones no package carries);
                        ensure-engine.mjs creates/checks the device-local venv before dev and packaging;
                        engine/check_dependencies.py validates installed versions without third-party imports
 PLAN.md                product plan and roadmap. Its "Folder Structure" section is outdated; trust the map above.

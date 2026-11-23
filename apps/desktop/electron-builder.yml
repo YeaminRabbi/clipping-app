@@ -17,6 +17,9 @@ extraResources:
     filter:
       - ffmpeg.exe
       - ffprobe.exe
+  # License texts and notices (GPL FFmpeg and everything else), made by scripts/collect-licenses.mjs.
+  - from: licenses-out
+    to: licenses
 asar: true
 win:
   target:

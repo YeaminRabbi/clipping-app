@@ -85,6 +85,10 @@ installs to about 920 MB because it bundles the Python engine, FFmpeg and OpenCV
 isn't code-signed yet, so Windows SmartScreen will warn on first run until it's signed with a
 certificate (set `CSC_LINK` / `CSC_KEY_PASSWORD` before building).
 
+The installer includes `licenses/`: the GPL text, FFmpeg's own license and build list, and notices for every
+Python and npm package (`npm run licenses` collects them, and `npm run dist` stops if FFmpeg's are missing).
+FFmpeg is a GPL build because the app needs libx264 and libx265; it's run as a separate program.
+
 Speech models aren't in the installer: each one downloads the first time it's used (75 / 145 / 480 MB).
 
 ## Publishing an update
@@ -100,7 +104,10 @@ and what happens next depends on whether the build is code-signed:
 
 1. Bump `version` in `apps/desktop/package.json` (e.g. `0.1.0` → `0.2.0`).
 2. Create a GitHub token with `repo` scope and set it: `set GH_TOKEN=...`
-3. Run `npm run release`. It uploads the installer, its blockmap and `latest.yml` to a GitHub release
+3. Attach the source code of the bundled FFmpeg build (and of its libraries, listed in
+   `bin/FFMPEG-README.txt`) to the release, or host it yourself. FFmpeg here is GPL, and whoever distributes
+   the installer must offer the matching source. `licenses/` in the installed app says where to find it.
+4. Run `npm run release`. It uploads the installer, its blockmap and `latest.yml` to a GitHub release
    for that version. Publish the release if it was created as a draft.
 
 ## Where things are stored (Windows)
