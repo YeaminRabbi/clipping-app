@@ -296,10 +296,34 @@ class Database:
             # Rebuilding a table drops the old one, which would delete everything that references it.
             conn.execute("PRAGMA foreign_keys = OFF")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if version > len(MIGRATIONS):
+                raise RuntimeError(
+                    f"These projects were last opened by a newer version of the app (database version {version}, this one knows "
+                    f"{len(MIGRATIONS)}). Install the newer version to open them."
+                )
+            if 0 < version < len(MIGRATIONS):
+                self._backup(conn, version)
             for i in range(version, len(MIGRATIONS)):
-                conn.executescript(MIGRATIONS[i])
-                conn.execute(f"PRAGMA user_version = {i + 1}")
+                # The changes and the new version number are one transaction, so an interrupted
+                # migration leaves the database as it was and simply runs again.
+                try:
+                    conn.executescript(f"BEGIN IMMEDIATE;\n{MIGRATIONS[i]}\n;PRAGMA user_version = {i + 1};\nCOMMIT;")
+                except BaseException:
+                    if conn.in_transaction:
+                        conn.rollback()
+                    raise
             return conn.execute("PRAGMA user_version").fetchone()[0]
+
+    def _backup(self, conn: sqlite3.Connection, version: int) -> None:
+        """Keep a copy from before the update, next to the database."""
+        target = self.path.with_name(f"{self.path.name}.v{version}.bak")
+        if target.exists():
+            return  # an earlier attempt's copy is the one from before anything changed
+        copy = sqlite3.connect(target)
+        try:
+            conn.backup(copy)
+        finally:
+            copy.close()
 
     def schema_version(self) -> int:
         with self.connect() as conn:
