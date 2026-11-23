@@ -33,6 +33,7 @@ class FFmpegInfo:
     ffmpeg: ToolInfo
     ffprobe: ToolInfo
     hw_encoders: dict[str, list[str]] = field(default_factory=dict)
+    can_tone_map: bool = False  # zscale and tonemap are optional parts of FFmpeg
 
     @property
     def ok(self) -> bool:
@@ -78,6 +79,14 @@ def _hw_encoders(ffmpeg_path: str) -> dict[str, list[str]]:
     return {vendor: names for vendor, names in found.items() if names}
 
 
+def _can_tone_map(ffmpeg_path: str) -> bool:
+    try:
+        names = set(re.findall(r"^\s*\S+\s+(\S+)\s+\S+->\S+", _run([ffmpeg_path, "-hide_banner", "-filters"]), flags=re.MULTILINE))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return {"zscale", "tonemap"} <= names
+
+
 @lru_cache(maxsize=1)
 def detect(bin_dir: Path) -> FFmpegInfo:
     tools = {}
@@ -87,4 +96,5 @@ def detect(bin_dir: Path) -> FFmpegInfo:
     info = FFmpegInfo(ffmpeg=tools["ffmpeg"], ffprobe=tools["ffprobe"])
     if info.ffmpeg.path:
         info.hw_encoders = _hw_encoders(info.ffmpeg.path)
+        info.can_tone_map = _can_tone_map(info.ffmpeg.path)
     return info

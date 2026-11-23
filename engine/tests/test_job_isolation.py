@@ -14,7 +14,7 @@ from app.db import MIGRATIONS, Database
 from app.media import CancelToken, Cancelled, MediaError
 
 TOOLS = SimpleNamespace(
-    ffmpeg=SimpleNamespace(path="ffmpeg"), ffprobe=SimpleNamespace(path="ffprobe"), ok=True, hw_encoders={}
+    ffmpeg=SimpleNamespace(path="ffmpeg"), ffprobe=SimpleNamespace(path="ffprobe"), ok=True, hw_encoders={}, can_tone_map=False
 )
 
 
@@ -60,7 +60,7 @@ def renders(monkeypatch) -> Renders:
     monkeypatch.setattr(
         "app.exports.probe",
         lambda ffprobe, path: SimpleNamespace(
-            fps_rational="30/1", width=1920, height=1080, has_audio=False, video_offset_s=0.0, container="mov,mp4"
+            fps_rational="30/1", width=1920, height=1080, has_audio=False, video_offset_s=0.0, container="mov,mp4", color_transfer=None
         ),
     )
     return fake

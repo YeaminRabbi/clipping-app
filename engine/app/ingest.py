@@ -7,6 +7,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -204,6 +205,8 @@ class IngestManager:
             token.raise_if_cancelled()
             self._update(source_id, token, status="probing", progress=process_start, error=None)
             info = probe(tools.ffprobe.path, src)
+            if not tools.can_tone_map:
+                info = replace(info, color_transfer=None)  # HDR is then left as it is
             self._update(
                 source_id,
                 token,

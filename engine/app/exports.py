@@ -28,6 +28,7 @@ from .edit.service import plan_for_clip, tighten_settings
 from .edit.timemap import TimeMap
 from .events import EventHub
 from .media import CancelToken, Cancelled, MediaError
+from .media.color import tone_map_filter
 from .media.probe import preroll_for, probe
 from .media.render import (
     CPU_ENCODERS,
@@ -336,6 +337,7 @@ class ExportManager:
 
             first_ms = round(timemap.segments[0][0]) if timemap else row["start_ms"]
             preroll = preroll_for(tools.ffprobe.path, src, info, first_ms)
+            tone_map = tone_map_filter(info.color_transfer) if tools.can_tone_map else ""
             encoder = pick_encoder(tools.ffmpeg.path, preset["codec"], preset["hardware"], tools.hw_encoders)
             last = {"t": 0.0}
 
@@ -358,7 +360,8 @@ class ExportManager:
                     output_fps=output_fps,
                     has_audio=info.has_audio,
                     video_filter=build_video_filter(
-                        row["mode"], out_w, out_h, output_fps, crop_px, pixel_format(enc), path=path, fit=fit, overlay=overlay
+                        row["mode"], out_w, out_h, output_fps, crop_px, pixel_format(enc), path=path, fit=fit, overlay=overlay,
+                        tone_map=tone_map,
                     ),
                     work_dir=caption_dir,
                     encoder=enc,

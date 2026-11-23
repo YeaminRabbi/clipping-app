@@ -129,10 +129,12 @@ def build_video_filter(
     path: CropPath | None = None,
     fit: FitOptions | None = None,
     overlay: str = "",
+    tone_map: str = "",
 ) -> str:
     """Filter graph from the source's displayed frame to the output frame, at a constant frame rate."""
-    # `overlay` (e.g. burned-in captions) is drawn on the finished frame, before the pixel format.
-    tail = f"setsar=1,{overlay + ',' if overlay else ''}format={pix_fmt}"
+    # `tone_map` (HDR to SDR, on the scaled picture since it's slow) and then `overlay` (burned-in
+    # captions, which are SDR already) come last, before the pixel format.
+    tail = ",".join(["setsar=1", *(f for f in (tone_map, overlay) if f), f"format={pix_fmt}"])
     if mode == "fit":
         return _fit_filter(out_w, out_h, fps, tail, fit or FitOptions())
     if mode == "smart":

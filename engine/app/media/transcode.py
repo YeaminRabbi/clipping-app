@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..ffmpeg import NO_WINDOW
 from . import CancelToken, Cancelled, MediaError
+from .color import tone_map_filter
 from .probe import MediaInfo
 
 PROXY_HEIGHT = 480
@@ -97,7 +98,7 @@ def make_proxy(
     args = [
         "-i", str(src),
         "-map", "0:v:0", "-map", "0:a:0?",
-        "-vf", f"scale=-2:'min({PROXY_HEIGHT},ih)',fps={fps}",
+        "-vf", ",".join(f for f in (f"scale=-2:'min({PROXY_HEIGHT},ih)'", f"fps={fps}", tone_map_filter(info.color_transfer)) if f),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p",
         "-g", str(gop), "-keyint_min", str(gop), "-sc_threshold", "0",
         "-c:a", "aac", "-b:a", "96k", "-ac", "2",
@@ -114,5 +115,5 @@ def make_proxy(
 def make_poster(ffmpeg: str, src: Path, dest: Path, info: MediaInfo, cancel: CancelToken) -> None:
     """Thumbnail from 10% in, which skips most black intro frames."""
     at = f"{info.duration_ms * 0.1 / 1000:.3f}"
-    args = ["-ss", at, "-i", str(src), "-frames:v", "1", "-vf", "scale=-2:360", "-q:v", "4", str(dest)]
+    args = ["-ss", at, "-i", str(src), "-frames:v", "1", "-vf", ",".join(f for f in ("scale=-2:360", tone_map_filter(info.color_transfer)) if f), "-q:v", "4", str(dest)]
     run_ffmpeg(ffmpeg, args, 0, cancel)

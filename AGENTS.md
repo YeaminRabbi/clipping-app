@@ -131,7 +131,7 @@ engine/
   app/ingest.py        IngestManager: download (yt-dlp) → probe → poster → proxy → thumbnails/waveform
   app/exports.py       ExportManager: render queue, GPU→CPU fallback, captions burn-in/SRT, ZIP batches
   app/api/             routers: projects, sources (+ /media/...), clips, analysis, captions, exports, ui (/ui/show)
-  app/media/           blocking FFmpeg work: probe, download, transcode (proxy/poster), timeline assets, render
+  app/media/           blocking FFmpeg work: probe, color (HDR to SDR), download, transcode (proxy/poster), timeline assets, render
   app/analysis/        auto clipping: transcribe → signals → candidates → scoring → finder; manager = background job
   app/reframe/         face detection (YuNet), speaker detection, smooth shot-aware crop paths
   app/captions/        cues from words, styles/templates, ASS (burn-in) and SRT output

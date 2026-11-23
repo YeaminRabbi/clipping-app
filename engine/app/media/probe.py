@@ -34,6 +34,7 @@ class MediaInfo:
     size_bytes: int | None
     # How long after the file's own start the first video frame comes (audio often starts slightly earlier).
     video_offset_s: float = 0.0
+    color_transfer: str | None = None
     container: str = ""  # FFmpeg's format name, e.g. "mov,mp4,m4a,3gp,3g2,mj2" or "mpegts"
     start_s: float = 0.0  # the file's own first timestamp; MPEG-TS rarely starts at 0
 
@@ -132,6 +133,7 @@ def parse_probe(data: dict) -> MediaInfo:
         has_audio=audio is not None,
         size_bytes=int(size) if size else None,
         video_offset_s=video_offset,
+        color_transfer=video.get("color_transfer"),
         container=(data.get("format") or {}).get("format_name") or "",
         start_s=file_start or 0.0,
     )
