@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__, ffmpeg
 from .analysis.manager import AnalysisManager
+from .analysis.transcribe import speech_device
 from .api import analysis, captions, clips, exports, projects, sources, ui
 from .config import Settings, load_settings
 from .db import Database
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": __version__,
             "db": {"path": str(settings.db_path), "schema_version": request.app.state.db.schema_version()},
             "ffmpeg": {"ok": info.ok, **asdict(info)},
+            "speech": asdict(speech_device()),
         }
 
     @app.websocket("/ws")

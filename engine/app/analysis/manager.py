@@ -17,7 +17,7 @@ from ..media import CancelToken, Cancelled, MediaError
 from .finder import FindSettings, find_clips
 from .scoring import Signals
 from .signals import cached_scene_cuts, loudness, silences
-from .transcribe import load_cached, model_is_downloaded, transcribe
+from .transcribe import load_cached, model_is_downloaded, transcribe, transcribing_stage
 
 log = logging.getLogger("engine.analysis")
 
@@ -216,7 +216,7 @@ class AnalysisManager:
         if not model_is_downloaded(self.settings.models_path, model):
             self._update(source_id, stage="Downloading speech model (first time only)")
         else:
-            self._update(source_id, stage="Transcribing speech")
+            self._update(source_id, stage=transcribing_stage())
         tools = ffmpeg.detect(self.settings.bin_dir)
         first = {"seen": False}
         report = self._reporter(source_id, 0, 0.8)
@@ -224,7 +224,7 @@ class AnalysisManager:
         def on_progress(fraction: float) -> None:
             if not first["seen"]:
                 first["seen"] = True
-                self._update(source_id, stage="Transcribing speech")
+                self._update(source_id, stage=transcribing_stage())
             report(fraction)
 
         data = transcribe(

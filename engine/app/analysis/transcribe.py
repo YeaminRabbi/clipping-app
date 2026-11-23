@@ -1,9 +1,12 @@
 """Speech-to-text with faster-whisper, producing word-level timestamps."""
 
 import json
+import logging
 import os
 import subprocess
+import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,8 @@ import numpy as np
 
 from ..ffmpeg import NO_WINDOW
 from ..media import CancelToken, Cancelled, MediaError
+
+log = logging.getLogger("engine.transcribe")
 
 SAMPLE_RATE = 16000
 MODELS = ("tiny", "base", "small")  # fast / balanced / accurate
@@ -42,15 +47,69 @@ def model_is_downloaded(models_dir: Path, name: str) -> bool:
     return snapshots.is_dir() and any((s / "model.bin").is_file() for s in snapshots.iterdir())
 
 
-def _load_model(models_dir: Path, name: str):
+# CTranslate2 bundles most of what it needs to run on an NVIDIA GPU, but not cuBLAS.
+CUBLAS_LIBRARY = "cublas64_12.dll" if sys.platform == "win32" else "libcublas.so.12"
+# Why the GPU can't be used, once an attempt to use it has failed (None = no failure seen).
+_gpu_failure: str | None = None
+
+
+@dataclass(frozen=True)
+class SpeechDevice:
+    device: str  # "cuda" or "cpu"
+    gpu_present: bool
+    message: str | None  # shown to the user when there is a GPU that can't be used
+
+
+def _library_loads(name: str) -> bool:
+    import ctypes
+
+    try:
+        ctypes.CDLL(name)
+    except OSError:
+        return False
+    return True
+
+
+def speech_device() -> SpeechDevice:
+    """Where speech recognition will run. Checked before loading a model, because CTranslate2 only
+    looks for cuBLAS when it first computes something, long after the model has loaded."""
     import ctranslate2
+
+    if ctranslate2.get_cuda_device_count() == 0:
+        return SpeechDevice("cpu", False, None)
+    if _gpu_failure is not None:
+        return SpeechDevice("cpu", True, f"The NVIDIA GPU can't be used for speech recognition ({_gpu_failure}), so it runs on the CPU.")
+    if not _library_loads(CUBLAS_LIBRARY):
+        return SpeechDevice(
+            "cpu", True, f"The CUDA 12 library {CUBLAS_LIBRARY} isn't installed, so speech recognition runs on the CPU instead of the NVIDIA GPU."
+        )
+    return SpeechDevice("cuda", True, None)
+
+
+def transcribing_stage() -> str:
+    """Progress text for a running transcription; says so when a GPU is there but isn't used."""
+    where = speech_device()
+    return "Transcribing speech on the CPU (GPU not usable, see System check)" if where.message else "Transcribing speech"
+
+
+def _load_model(models_dir: Path, name: str):
     from faster_whisper import WhisperModel
 
-    if ctranslate2.get_cuda_device_count() > 0:
+    global _gpu_failure
+    where = speech_device()
+    if where.device == "cuda":
         try:
-            return WhisperModel(name, device="cuda", compute_type="float16", download_root=str(models_dir))
-        except Exception:
-            pass  # fall back to CPU, e.g. when CUDA libraries are missing
+            model = WhisperModel(name, device="cuda", compute_type="float16", download_root=str(models_dir))
+            # Missing or mismatched CUDA libraries only show up when something is computed, so compute
+            # something now, while falling back is still possible.
+            segments, _ = model.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), language="en", beam_size=1)
+            list(segments)
+            return model
+        except Exception as err:
+            _gpu_failure = str(err).strip() or type(err).__name__
+            log.warning("Speech recognition can't use the GPU, falling back to the CPU: %s", err)
+    elif where.message:
+        log.warning("%s", where.message)
     return WhisperModel(name, device="cpu", compute_type="int8", download_root=str(models_dir))
 
 

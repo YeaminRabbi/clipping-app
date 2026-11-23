@@ -16,6 +16,8 @@ export interface Health {
     ffprobe: ToolInfo
     hw_encoders: Record<string, string[]>
   }
+  /** Where speech recognition runs, and why not on the GPU when there is one that can't be used. */
+  speech: { device: 'cpu' | 'cuda'; gpu_present: boolean; message: string | null }
 }
 
 export interface Project {

@@ -65,6 +65,9 @@ export function SystemCheck() {
             : 'None in this FFmpeg build — exports will use the CPU'
           : '—'}
       </Row>
+      <Row label="Speech recognition" ok={health ? true : ready ? null : false}>
+        {health ? (health.speech.message ?? (health.speech.device === 'cuda' ? 'NVIDIA GPU' : 'CPU')) : '—'}
+      </Row>
 
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-xs text-muted">
         <span>{appInfo ? `Clipping App ${appInfo.version}` : ''}</span>
