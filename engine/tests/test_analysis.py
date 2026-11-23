@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.analysis.signals import SCENES_FILE
 from app.config import PROJECT_ROOT, Settings
 from app.main import create_app
 from conftest import BIN_DIR, FFMPEG, MODELS_DIR, SCENE_CUTS_S, TOKEN, needs_ffmpeg, wait_for
@@ -101,7 +102,7 @@ def test_action_mode_detects_cuts_and_snaps_onto_them(client, source):
     a = analyze(client, source["id"], mode="action", clip_count=3, min_seconds=10, max_seconds=15)
     assert a["status"] == "done", a["error"]
     work = Path(client.app.state.ingest.source_dir(source["project_id"], source["id"]))
-    cuts = json.loads((work / "scenes.json").read_text())
+    cuts = json.loads((work / SCENES_FILE).read_text())
     assert [round(c / 1000) for c in cuts] == list(SCENE_CUTS_S)
 
     clips = client.get(f"/sources/{source['id']}/clips").json()

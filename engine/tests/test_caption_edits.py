@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pytest
 
+from app.analysis.signals import LOUDNESS_FILE
 from app.captions.cues import apply_text_edit
 
 
@@ -30,7 +31,7 @@ def clip(client, project) -> dict:
     work = client.app.state.ingest.source_dir(project["id"], sid)
     work.mkdir(parents=True)
     (work / "transcript.json").write_text(json.dumps({"version": 2, "model": "base", "language": "en", "words": WORDS}))
-    np.save(work / "loudness.npy", np.full(200, -20.0))
+    np.save(work / LOUDNESS_FILE, np.full(200, -20.0))
     client.put(f"/projects/{project['id']}/caption-style", json={"template": "minimal"})
     return client.post(f"/sources/{sid}/clips", json={"start_ms": 0, "end_ms": 10000}).json()
 

@@ -1,20 +1,43 @@
 """Scene cuts and loudness, measured on the proxy (small and constant frame rate, so it's fast)."""
 
+import io
 import json
 import re
 import subprocess
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 
 from ..ffmpeg import NO_WINDOW
-from ..media import CancelToken, Cancelled
+from ..media import CancelToken, Cancelled, MediaError
 
 LOUDNESS_PER_SECOND = 10
 SILENCE_FLOOR_DB = -90.0
 MIN_SILENCE_MS = 300
 SCENE_THRESHOLD = 10.0  # scdet score (0-100); 10 catches hard cuts without reacting to camera motion
+
+# Version 2: files made before could hold the result of a run that had failed.
+SCENES_FILE = "scenes.v2.json"
+LOUDNESS_FILE = "loudness.v2.npy"
+
+_locks: dict[str, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _cache_lock(path: Path) -> threading.Lock:
+    """One computation of a file at a time: several exports may need it at once."""
+    with _locks_guard:
+        return _locks.setdefault(str(path), threading.Lock())
+
+
+def _save(path: Path, data: bytes) -> None:
+    """Write the whole file or none of it."""
+    tmp = path.with_name(f"{path.name}.partial")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
 
 _SCD_TIME = re.compile(r"lavfi\.scd\.time:\s*([\d.]+)")
 _OUT_TIME = re.compile(r"time=(\d+):(\d+):([\d.]+)")
@@ -59,6 +82,8 @@ def scene_cuts(
         raise
     finally:
         proc.wait()
+    if proc.returncode != 0:
+        raise MediaError("Could not look for scene changes in this video")
     return sorted(set(c for c in cuts if 0 < c < duration_ms))
 
 
@@ -70,16 +95,17 @@ def cached_scene_cuts(
     cancel: CancelToken,
     on_progress: Callable[[float], None] | None = None,
 ) -> list[int]:
-    """Scene cuts for a source, computed once and saved as scenes.json next to its proxy."""
-    path = work_dir / "scenes.json"
-    if path.is_file():
-        try:
-            return json.loads(path.read_text())
-        except ValueError:
-            pass
-    cuts = scene_cuts(ffmpeg, proxy, duration_ms, cancel, on_progress)
-    path.write_text(json.dumps(cuts))
-    return cuts
+    """Scene cuts for a source, computed once and saved next to its proxy. A failure isn't saved."""
+    path = work_dir / SCENES_FILE
+    with _cache_lock(path):
+        if path.is_file():
+            try:
+                return json.loads(path.read_text())
+            except (OSError, ValueError):
+                pass
+        cuts = scene_cuts(ffmpeg, proxy, duration_ms, cancel, on_progress)
+        _save(path, json.dumps(cuts).encode())
+        return cuts
 
 
 def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool) -> np.ndarray:
@@ -93,6 +119,9 @@ def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool) -> np.
         capture_output=True,
         creationflags=NO_WINDOW,
     )
+    if result.returncode != 0:
+        # Not the same as silence, which would let Tighten cut everything.
+        raise MediaError("Could not measure the sound of this video")
     samples = np.frombuffer(result.stdout[: len(result.stdout) // 2 * 2], dtype=np.int16).astype(np.float64) / 32768
     window = rate // LOUDNESS_PER_SECOND
     usable = len(samples) // window * window
@@ -104,16 +133,19 @@ def loudness(ffmpeg: str, proxy: Path, duration_ms: int, has_audio: bool) -> np.
 
 
 def cached_loudness(ffmpeg: str, proxy: Path, work_dir: Path, duration_ms: int, has_audio: bool) -> np.ndarray:
-    """loudness(), saved as loudness.npy next to the proxy after the first time."""
-    path = work_dir / "loudness.npy"
-    if path.is_file():
-        try:
-            return np.load(path)
-        except (OSError, ValueError):
-            pass
-    levels = loudness(ffmpeg, proxy, duration_ms, has_audio)
-    np.save(path, levels)
-    return levels
+    """loudness(), saved next to the proxy after the first time. A failure isn't saved."""
+    path = work_dir / LOUDNESS_FILE
+    with _cache_lock(path):
+        if path.is_file():
+            try:
+                return np.load(path)
+            except (OSError, ValueError, EOFError):
+                pass
+        levels = loudness(ffmpeg, proxy, duration_ms, has_audio)
+        data = io.BytesIO()
+        np.save(data, levels)
+        _save(path, data.getvalue())
+        return levels
 
 
 def silence_threshold(db: np.ndarray) -> float:
