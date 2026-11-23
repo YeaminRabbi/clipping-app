@@ -1,6 +1,7 @@
 // Builds the engine into engine/dist/clipping-engine with PyInstaller, then starts it once to check it
 // boots and answers /health with FFmpeg found.
 import { execFileSync, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { binDir, engineDir, exe, venvPython } from './paths.mjs'
@@ -21,8 +22,9 @@ const binary = join(distDir, `clipping-engine${exe}`)
 if (!existsSync(binary)) throw new Error(`Build finished but ${binary} is missing`)
 
 console.log('> Smoke test: starting the built engine…')
+const token = randomBytes(32).toString('hex')
 const child = spawn(binary, ['--port', '0'], {
-  env: { ...process.env, CLIP_BIN_DIR: binDir, CLIP_DATA_DIR: join(engineDir, 'build', 'smoke-data'), CLIP_ENGINE_TOKEN: '' },
+  env: { ...process.env, CLIP_BIN_DIR: binDir, CLIP_DATA_DIR: join(engineDir, 'build', 'smoke-data'), CLIP_ENGINE_TOKEN: token },
   stdio: ['ignore', 'pipe', 'pipe']
 })
 let output = ''
@@ -41,7 +43,7 @@ const port = await new Promise((resolve, reject) => {
   child.on('exit', (code) => reject(new Error(`Engine exited with ${code}:\n${output}`)))
 })
 try {
-  const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json()
+  const health = await (await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-engine-token': token } })).json()
   if (!health.ffmpeg?.ok) throw new Error(`Engine started but FFmpeg was not found: ${JSON.stringify(health.ffmpeg)}`)
   console.log(`  ok: engine ${health.version}, schema v${health.db.schema_version}, FFmpeg ${health.ffmpeg.ffmpeg.version}`)
 } finally {

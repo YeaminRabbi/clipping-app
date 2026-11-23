@@ -65,7 +65,7 @@ Electron app (apps/desktop)                           Python engine (engine/)
   engine start/restart status, logs and auto-updates.
 - Every request needs the per-launch token. `<video>`/`<img>` URLs under `/media/` carry it as
   `?token=` (see `EngineClient.mediaUrl`). If `CLIP_ENGINE_TOKEN` is unset (engine run on its
-  own), auth is off.
+  own), the engine makes a token and prints it as `ENGINE_TOKEN ...`.
 - Long work (import, analysis, export) runs in `ThreadPoolExecutor` workers inside "manager"
   classes. Workers write progress to SQLite and broadcast the updated row with
   `events.emit(<event>, dict)`. The UI's store applies these events to its lists.
@@ -84,7 +84,7 @@ the npm scripts directly.
 | Desktop tests | `npm run test:desktop` (node:test; main-process logic that doesn't need Electron) |
 | Engine tests | `npm run test:engine` (pytest in the venv; extra args pass through, e.g. `npm run test:engine -- tests/test_editing.py -k export`) |
 | Drive the running app | `node scripts/clip.mjs <command>` (see "Driving the app" above) |
-| Run the engine alone | `cd engine && .venv/Scripts/python run.py --port 8765` (no auth, data in `.data/`) |
+| Run the engine alone | `cd engine && .venv/Scripts/python run.py --port 8765` (prints the token to send as `x-engine-token`; data in `.data/`) |
 | Build the installer | `npm run dist` (collects licenses, PyInstaller engine + electron-builder) |
 
 Prerequisites: Node 22.12+, Python 3.11+, FFmpeg. On this machine FFmpeg was installed with

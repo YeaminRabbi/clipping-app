@@ -24,7 +24,7 @@ pytestmark = [needs_ffmpeg, pytest.mark.skipif(sys.platform != "win32", reason="
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", token=TOKEN, bin_dir=BIN_DIR, models_dir=MODELS_DIR)
     settings.projects_dir.mkdir(parents=True)
-    with TestClient(create_app(settings), headers={"x-engine-token": TOKEN}) as c:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1", headers={"x-engine-token": TOKEN}) as c:
         yield c
 
 

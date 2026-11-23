@@ -68,7 +68,8 @@ The packaged Windows installer bundles Python and its dependencies, so end users
 | `npm run dist` | Build the engine and the Windows installer into `apps/desktop/release` |
 | `npm run release` | Same, then publish the installer to GitHub Releases (see below) |
 
-Run the engine on its own (auth disabled, data in `.data/`):
+Run the engine on its own (data in `.data/`; it prints the token every request must carry as
+`x-engine-token`, or set `CLIP_ENGINE_TOKEN` yourself):
 
 ```bash
 cd engine && .venv/Scripts/python run.py --port 8765

@@ -1,6 +1,7 @@
 """Engine settings, read from environment variables set by the Electron main process."""
 
 import os
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,8 +42,9 @@ def load_settings() -> Settings:
     (data_dir / "projects").mkdir(exist_ok=True)
     return Settings(
         data_dir=data_dir,
-        # When unset (e.g. running the engine standalone for development) auth is disabled.
-        token=os.environ.get("CLIP_ENGINE_TOKEN") or None,
+        # The desktop app sets one per launch. Running alone, the engine makes its own (run.py prints it):
+        # without one, any web page could drive it.
+        token=os.environ.get("CLIP_ENGINE_TOKEN") or secrets.token_hex(32),
         bin_dir=bin_dir,
         models_dir=Path(os.environ["CLIP_MODELS_DIR"]) if os.environ.get("CLIP_MODELS_DIR") else None,
     )

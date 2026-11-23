@@ -1,7 +1,12 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Settings
+from app.config import Settings, load_settings
 from app.db import MIGRATIONS
 from app.main import create_app
 from conftest import needs_ffmpeg
@@ -12,7 +17,7 @@ TOKEN = "test-token"
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path, token=TOKEN, bin_dir=tmp_path / "bin")
-    with TestClient(create_app(settings), headers={"x-engine-token": TOKEN}) as c:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1", headers={"x-engine-token": TOKEN}) as c:
         yield c
 
 
@@ -141,3 +146,47 @@ def test_startup_removes_files_left_by_an_interrupted_export(client, project, tm
     assert finished.read_bytes() == b"a real video"
     with db.connect() as conn:
         assert {r[0] for r in conn.execute("SELECT status FROM export_jobs")} == {"failed"}
+
+
+# --- who may talk to the engine (F-06) -----------------------------------------------------------
+
+
+def preflight(client, origin: str):
+    return client.options(
+        "/projects", headers={"Origin": origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-engine-token"}
+    )
+
+
+def test_only_the_apps_own_pages_pass_cors(client):
+    for origin in ("http://localhost:5173", "http://127.0.0.1:5173", "file://"):
+        assert preflight(client, origin).headers.get("access-control-allow-origin") == origin
+    for origin in ("null", "https://example.com", "http://localhost.example.com:80"):
+        assert "access-control-allow-origin" not in preflight(client, origin).headers, origin
+
+
+def test_an_engine_without_a_configured_token_still_needs_one(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLIP_ENGINE_TOKEN", raising=False)
+    monkeypatch.setenv("CLIP_DATA_DIR", str(tmp_path / "data"))
+    settings = load_settings()
+    assert settings.token and settings.token != load_settings().token
+    with TestClient(create_app(settings), base_url="http://127.0.0.1") as c:
+        assert c.get("/projects").status_code == 401
+        assert c.get("/projects", headers={"x-engine-token": settings.token}).status_code == 200
+    with TestClient(create_app(Settings(data_dir=tmp_path, token=None, bin_dir=tmp_path)), base_url="http://127.0.0.1") as c:
+        assert c.get("/projects", headers={"x-engine-token": ""}).status_code == 401
+
+
+def test_requests_for_another_host_name_are_refused(client):
+    assert client.get("/projects", headers={"Host": "attacker.example"}).status_code == 421
+    assert client.get("/projects", headers={"Host": "127.0.0.1:5555"}).status_code == 200
+
+
+def test_a_token_that_is_not_ascii_is_just_wrong(client):
+    assert client.get("/health", headers={"x-engine-token": "é".encode("latin-1")}).status_code == 401
+
+
+def test_the_engine_refuses_to_listen_to_the_network_without_a_token(tmp_path):
+    env = {k: v for k, v in os.environ.items() if k != "CLIP_ENGINE_TOKEN"} | {"CLIP_DATA_DIR": str(tmp_path)}
+    run = Path(__file__).resolve().parent.parent / "run.py"
+    result = subprocess.run([sys.executable, str(run), "--host", "0.0.0.0", "--port", "0"], env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 2 and "CLIP_ENGINE_TOKEN" in result.stderr

@@ -102,10 +102,10 @@ def test_delete_source_keeps_users_file(client, project, short_video):
 
 def test_interrupted_imports_marked_failed_on_startup(tmp_path):
     settings = Settings(data_dir=tmp_path, token=TOKEN, bin_dir=BIN_DIR)
-    with TestClient(create_app(settings), headers={"x-engine-token": TOKEN}) as c:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1", headers={"x-engine-token": TOKEN}) as c:
         pid = c.post("/projects", json={"name": "P"}).json()["id"]
         with c.app.state.db.connect() as conn:
             conn.execute("INSERT INTO sources (project_id, origin, path, status) VALUES (?, 'file', 'x', 'processing')", (pid,))  # fmt: skip
-    with TestClient(create_app(settings), headers={"x-engine-token": TOKEN}) as c:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1", headers={"x-engine-token": TOKEN}) as c:
         source = c.get(f"/projects/{pid}/sources").json()[0]
         assert source["status"] == "failed" and "interrupted" in source["error"]

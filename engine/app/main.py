@@ -24,6 +24,7 @@ from .media import MediaError
 PUBLIC_PATHS: set[str] = set()
 # <video> and <img> tags can't send headers, so media URLs may carry the token as ?token=.
 QUERY_TOKEN_PREFIX = "/media/"
+LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,10 +51,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events, app.state.exports)
 
     def token_ok(supplied: str | None) -> bool:
-        return settings.token is None or (supplied is not None and secrets.compare_digest(supplied, settings.token))
+        if not settings.token or supplied is None:
+            return False
+        # Compared as bytes: compare_digest refuses non-ASCII strings.
+        return secrets.compare_digest(supplied.encode(), settings.token.encode())
 
     @app.middleware("http")
     async def require_token(request: Request, call_next):
+        # A page that points its own domain name at this machine is refused by the name it asks for.
+        if request.url.hostname not in LOCAL_HOSTS:
+            return JSONResponse({"detail": "Unknown host"}, status_code=status.HTTP_421_MISDIRECTED_REQUEST)
         # Any local process or web page can reach a localhost port, so every request must carry the
         # per-launch token that only the Electron app knows.
         if request.method != "OPTIONS" and request.url.path not in PUBLIC_PATHS:
@@ -66,10 +73,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Added after the token check so it wraps it: rejections still carry CORS headers and the
     # renderer sees a readable 401 instead of a network error.
-    # The renderer runs on the Vite dev server in development and on file:// when packaged.
+    # The renderer runs on the Vite dev server in development and on file:// when packaged. Not "null",
+    # which any website can send from a sandboxed frame.
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1):\d+|file://.*|null)$",
+        allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1):\d+|file://.*)$",
         allow_methods=["*"],
         allow_headers=["*"],
     )
