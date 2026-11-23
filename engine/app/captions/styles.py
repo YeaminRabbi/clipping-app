@@ -1,6 +1,7 @@
 """Caption style templates. Sizes are in pixels for a 1920-pixel-tall frame and scale with the output."""
 
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -69,16 +70,32 @@ FONTS: dict[str, str] = {
 OVERRIDABLE = ("font", "size", "uppercase", "color", "highlight", "position")
 
 
+MIN_SIZE, MAX_SIZE = 24, 200
+_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def _usable(key: str, value: Any) -> Any:
+    """A stored override if it makes sense, else None. Bad ones must never stop a project from opening."""
+    if key == "font":
+        return value if value in FONTS else None
+    if key == "size":
+        try:
+            return int(min(max(int(value), MIN_SIZE), MAX_SIZE))
+        except (TypeError, ValueError, OverflowError):
+            return None
+    if key == "uppercase":
+        return value if isinstance(value, bool) else None
+    if key == "position":
+        return value if value in ("top", "middle", "bottom") else None
+    if key == "highlight" and value == "":
+        return value
+    return value if isinstance(value, str) and _COLOR.fullmatch(value) else None
+
+
 def resolve(template: str | None, overrides: dict[str, Any] | None = None) -> CaptionStyle:
     base = TEMPLATES.get(template or DEFAULT_TEMPLATE, TEMPLATES[DEFAULT_TEMPLATE])
-    changes = {k: v for k, v in (overrides or {}).items() if k in OVERRIDABLE and v is not None}
-    if "font" in changes and changes["font"] not in FONTS:
-        del changes["font"]
-    if "size" in changes:
-        changes["size"] = int(min(max(int(changes["size"]), 24), 200))
-    if "position" in changes and changes["position"] not in ("top", "middle", "bottom"):
-        del changes["position"]
-    return replace(base, **changes)
+    changes = {k: _usable(k, v) for k, v in (overrides or {}).items() if k in OVERRIDABLE and isinstance(v, (str, int, float))}
+    return replace(base, **{k: v for k, v in changes.items() if v is not None})
 
 
 def font_file(font: str) -> Path | None:

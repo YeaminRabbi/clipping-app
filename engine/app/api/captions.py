@@ -9,14 +9,28 @@ from ..analysis.manager import AlreadyRunning
 from ..analysis.transcribe import MODELS
 from ..captions.cues import apply_text_edit
 from ..captions.service import clip_cues, clip_words, project_style, resolved_style
-from ..captions.styles import DEFAULT_TEMPLATE, FONTS, OVERRIDABLE, TEMPLATES, font_file
+from ..captions.styles import DEFAULT_TEMPLATE, FONTS, MAX_SIZE, MIN_SIZE, OVERRIDABLE, TEMPLATES, font_file
 
 router = APIRouter(tags=["captions"])
 
 
+COLOR = r"^#[0-9A-Fa-f]{6}$"
+
+
+class StyleOverrides(BaseModel):
+    """What may be changed on top of a template. Left out or null = the template's own value."""
+
+    font: Literal[tuple(FONTS)] | None = None  # type: ignore[valid-type]
+    size: int | None = Field(default=None, ge=MIN_SIZE, le=MAX_SIZE)
+    uppercase: bool | None = None
+    color: str | None = Field(default=None, pattern=COLOR)
+    highlight: str | None = Field(default=None, pattern=rf"{COLOR}|^$")  # "" = no highlight
+    position: Literal["top", "middle", "bottom"] | None = None
+
+
 class StyleUpdate(BaseModel):
     template: Literal["bold_pop", "karaoke", "classic", "minimal"] = DEFAULT_TEMPLATE  # type: ignore[valid-type]
-    overrides: dict[str, Any] = Field(default_factory=dict)
+    overrides: StyleOverrides = Field(default_factory=StyleOverrides)
 
 
 class CaptionEdit(BaseModel):
@@ -71,7 +85,7 @@ def get_caption_style(project_id: int, request: Request) -> dict[str, Any]:
 
 @router.put("/projects/{project_id}/caption-style")
 def set_caption_style(project_id: int, body: StyleUpdate, request: Request) -> dict[str, Any]:
-    overrides = {k: v for k, v in body.overrides.items() if k in OVERRIDABLE}
+    overrides = body.overrides.model_dump(exclude_none=True)
     with request.app.state.db.connect() as conn:
         if not conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone():
             raise HTTPException(404, "Project not found")

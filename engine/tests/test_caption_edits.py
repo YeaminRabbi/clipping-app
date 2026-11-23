@@ -89,3 +89,36 @@ def test_new_words_are_timed_around_hidden_ones():
     for x in out:
         if x["text"] != "um":
             assert not 300 < (x["start"] + x["end"]) / 2 < 900, x
+
+
+# --- caption style values (F-20) -----------------------------------------------------------------
+
+BAD = [
+    {"size": "big"}, {"size": 5}, {"size": 100000}, {"color": "red"}, {"color": "#FFF"}, {"color": 5}, {"highlight": "#12345G"},
+    {"color": "#FFFFFF\nDialogue: x"}, {"position": "left"}, {"font": "Comic Sans"}, {"uppercase": "maybe"}, {"size": None, "color": []},
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("overrides", BAD)
+def test_bad_style_values_are_rejected_and_not_saved(client, project, overrides):
+    url = f"/projects/{project['id']}/caption-style"
+    client.put(url, json={"template": "classic", "overrides": {"size": 60}})
+    assert client.put(url, json={"template": "classic", "overrides": overrides}).status_code == 422
+    assert client.get(url).json()["overrides"] == {"size": 60}
+
+
+@pytest.mark.parametrize("overrides", BAD)
+def test_bad_values_already_saved_dont_stop_a_project_from_opening(client, project, clip, overrides):
+    with client.app.state.db.connect() as conn:
+        conn.execute("UPDATE caption_styles SET options_json = ? WHERE project_id = ?", (json.dumps(overrides), project["id"]))
+    res = client.get(f"/projects/{project['id']}/caption-style")
+    assert res.status_code == 200
+    style = res.json()["style"]
+    assert 24 <= style["size"] <= 200 and style["color"].startswith("#") and len(style["color"]) == 7
+    assert client.get(f"/clips/{clip['id']}/captions").status_code == 200
+
+
+def test_good_style_values_are_kept(client, project):
+    good = {"font": "Arial", "size": 72, "uppercase": True, "color": "#00ff00", "highlight": "", "position": "top"}
+    body = client.put(f"/projects/{project['id']}/caption-style", json={"template": "classic", "overrides": good}).json()
+    assert body["overrides"] == good and {k: body["style"][k] for k in good} == good
