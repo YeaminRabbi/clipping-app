@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from .. import clips
 from ..analysis.manager import AlreadyRunning
 from ..analysis.transcribe import MODELS
-from ..captions.cues import apply_text_edit
+from ..captions.cues import apply_text_edit, in_clip
 from ..captions.service import CaptionEdits, clip_cues, clip_words, project_style, resolved_style
 from ..captions.styles import DEFAULT_TEMPLATE, FONTS, MAX_SIZE, MIN_SIZE, OVERRIDABLE, TEMPLATES, font_file
 
@@ -107,7 +107,7 @@ def get_captions(clip_id: int, request: Request) -> dict[str, Any]:
 def edit_captions(clip_id: int, body: CaptionEdit, request: Request) -> dict[str, Any]:
     with request.app.state.db.connect() as conn:
         clip = _clip_or_404(conn, clip_id)
-        words, _ = clip_words(conn, request.app.state.settings, clip)
+        words, _ = clip_words(conn, request.app.state.settings, clip, clamp=False)
         if words is None:
             raise HTTPException(409, "Transcribe the video first")
         # Increasing, but not necessarily consecutive: a cue skips the words Tighten cuts.
@@ -116,6 +116,9 @@ def edit_captions(clip_id: int, body: CaptionEdit, request: Request) -> dict[str
             raise HTTPException(422, "Those caption words no longer exist; reload the captions")
         updated = apply_text_edit(words, body.indices, body.text)
         edits = CaptionEdits.load(conn, clip_id) or CaptionEdits([], [])
+        # Edits in parts that are trimmed off for now are kept for when the clip is extended again.
+        outside = [w for w in edits.words if not in_clip(w, clip["start_ms"], clip["end_ms"])]
+        updated = sorted(outside + updated, key=lambda w: w["start"])
         CaptionEdits(updated, edits.with_range(clip["start_ms"], clip["end_ms"])).save(conn, clip_id)
         conn.execute("UPDATE clips SET status = 'kept' WHERE id = ? AND status = 'suggested'", (clip_id,))
         full = clips.get(conn, clip_id)

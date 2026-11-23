@@ -122,11 +122,14 @@ class CaptionEdits:
         return merged
 
 
-def clip_words(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[list[dict[str, Any]] | None, bool]:
+def clip_words(
+    conn: sqlite3.Connection, settings: Settings, clip: Any, clamp: bool = True
+) -> tuple[list[dict[str, Any]] | None, bool]:
     """(words inside the clip, whether the user edited them). None when there's no transcript yet.
 
     Edited words are kept as they are; if the clip has since been extended, transcript words beyond the
     edited part fill in the rest, so trims never lose edits and extensions never leave gaps.
+    With `clamp` off, words at the clip's edges keep their full times (for saving them).
     """
     src = conn.execute("SELECT project_id FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
     transcript = load_transcript(settings, src["project_id"], clip["source_id"])
@@ -136,7 +139,7 @@ def clip_words(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple
     words = list(transcript["words"]) if transcript is not None else []
     if edits is not None:
         words = sorted(edits.words + [w for w in words if not edits.covers(w)], key=lambda w: w["start"])
-    return words_for_clip(words, clip["start_ms"], clip["end_ms"]), edits is not None
+    return words_for_clip(words, clip["start_ms"], clip["end_ms"], clamp), edits is not None
 
 
 def clip_cues(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[list[Cue] | None, bool, CaptionStyle]:

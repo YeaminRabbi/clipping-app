@@ -167,3 +167,31 @@ def test_edits_saved_by_an_older_version_still_work(client, clip):
     with client.app.state.db.connect() as conn:
         conn.execute("INSERT INTO clip_captions (clip_id, words_json) VALUES (?, ?)", (clip["id"], json.dumps(old)))
     assert texts(client, clip) == ["Um, hello there friend.", "SECOND UH LINE.", "Last words."]
+
+
+# --- edits outside the current range (F-10) ------------------------------------------------------
+
+
+def test_editing_a_trimmed_clip_keeps_earlier_edits_elsewhere(client, clip):
+    edit(client, clip, cues(client, clip)[-1], "FINAL EDIT")
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 6000})
+    edit(client, clip, cues(client, clip)[0], "X Y Z W")
+    assert texts(client, clip) == ["X Y Z W Second uh", "line."] or texts(client, clip)[0].startswith("X Y Z W")
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 10000})
+    assert texts(client, clip)[-1] == "FINAL EDIT" and texts(client, clip)[0].startswith("X Y Z W")
+
+
+def test_a_caption_deleted_outside_the_current_range_stays_deleted(client, clip):
+    edit(client, clip, cues(client, clip)[-1], "")
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 6000})
+    edit(client, clip, cues(client, clip)[0], "Hello again my friend.")
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 10000})
+    assert texts(client, clip) == ["Hello again my friend.", "Second uh line."]
+
+
+def test_a_word_cut_by_the_clips_edge_gets_its_full_length_back(client, clip):
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 2000})  # inside "friend."
+    edit(client, clip, cues(client, clip)[0], "Um, hello there FRIEND.")
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 10000})
+    word = cues(client, clip)[0]["words"][-1]
+    assert (word["text"], word["end"]) == ("FRIEND.", 2200)

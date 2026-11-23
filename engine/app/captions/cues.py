@@ -25,14 +25,19 @@ class Cue:
         return {"start": self.start, "end": self.end, "text": self.text, "words": self.words}
 
 
-def words_for_clip(words: list[dict[str, Any]], start_ms: int, end_ms: int) -> list[dict[str, Any]]:
-    """Words spoken inside the clip, clamped to its edges."""
+def words_for_clip(words: list[dict[str, Any]], start_ms: int, end_ms: int, clamp: bool = True) -> list[dict[str, Any]]:
+    """Words spoken inside the clip, clamped to its edges (or with their full times)."""
     out = []
     for w in words:
-        if w["end"] <= start_ms + 30 or w["start"] >= end_ms - 30:
+        if not in_clip(w, start_ms, end_ms):
             continue
-        out.append({"start": max(w["start"], start_ms), "end": min(w["end"], end_ms), "text": w["text"]})
+        start, end = (max(w["start"], start_ms), min(w["end"], end_ms)) if clamp else (w["start"], w["end"])
+        out.append({"start": start, "end": end, "text": w["text"]})
     return out
+
+
+def in_clip(word: dict[str, Any], start_ms: int, end_ms: int) -> bool:
+    return word["end"] > start_ms + 30 and word["start"] < end_ms - 30
 
 
 def make_cues(words: list[dict[str, Any]], style: CaptionStyle, end_limit: int | None = None) -> list[Cue]:
