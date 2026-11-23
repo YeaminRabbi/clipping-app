@@ -8,7 +8,7 @@ from .. import clips
 from ..analysis.manager import AlreadyRunning
 from ..analysis.transcribe import MODELS
 from ..captions.cues import apply_text_edit
-from ..captions.service import clip_cues, clip_words, project_style, resolved_style
+from ..captions.service import CaptionEdits, clip_cues, clip_words, project_style, resolved_style
 from ..captions.styles import DEFAULT_TEMPLATE, FONTS, MAX_SIZE, MIN_SIZE, OVERRIDABLE, TEMPLATES, font_file
 
 router = APIRouter(tags=["captions"])
@@ -115,12 +115,8 @@ def edit_captions(clip_id: int, body: CaptionEdit, request: Request) -> dict[str
         if not in_order or body.indices[0] < 0 or body.indices[-1] >= len(words):
             raise HTTPException(422, "Those caption words no longer exist; reload the captions")
         updated = apply_text_edit(words, body.indices, body.text)
-        conn.execute(
-            """INSERT INTO clip_captions (clip_id, words_json) VALUES (?, ?)
-               ON CONFLICT (clip_id) DO UPDATE SET words_json = excluded.words_json,
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
-            (clip_id, json.dumps(updated)),
-        )
+        edits = CaptionEdits.load(conn, clip_id) or CaptionEdits([], [])
+        CaptionEdits(updated, edits.with_range(clip["start_ms"], clip["end_ms"])).save(conn, clip_id)
         conn.execute("UPDATE clips SET status = 'kept' WHERE id = ? AND status = 'suggested'", (clip_id,))
         full = clips.get(conn, clip_id)
     request.app.state.events.emit("clip", full)

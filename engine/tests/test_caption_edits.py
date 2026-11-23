@@ -136,3 +136,34 @@ def test_fillers_are_only_removed_from_english(client, project, clip, language, 
     plan = client.get(f"/clips/{clip['id']}/cut-plan").json()
     assert (plan["fillers"] > 0) == removed and (plan["removed_ms"] > 0) == removed
     assert ("Um, hello there friend." in texts(client, clip)) != removed
+
+
+# --- deleting captions (F-09) --------------------------------------------------------------------
+
+
+def test_every_caption_can_be_deleted_and_stays_deleted(client, clip):
+    assert texts(client, clip) == ["Um, hello there friend.", "Second uh line.", "Last words."]
+    edit(client, clip, cues(client, clip)[0], "")
+    assert texts(client, clip) == ["Second uh line.", "Last words."]
+    edit(client, clip, cues(client, clip)[-1], "")
+    assert texts(client, clip) == ["Second uh line."]
+    edit(client, clip, cues(client, clip)[0], "")
+    assert texts(client, clip) == []
+    assert client.get(f"/clips/{clip['id']}/captions").json()["status"] == "ready"
+    client.delete(f"/clips/{clip['id']}/captions")
+    assert len(texts(client, clip)) == 3
+
+
+def test_extending_a_clip_still_fills_in_from_the_transcript(client, clip):
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 6000})
+    edit(client, clip, cues(client, clip)[0], "")
+    assert texts(client, clip) == ["Second uh line."]
+    client.patch(f"/clips/{clip['id']}", json={"end_ms": 10000})
+    assert texts(client, clip) == ["Second uh line.", "Last words."]
+
+
+def test_edits_saved_by_an_older_version_still_work(client, clip):
+    old = [{**x, "text": x["text"].upper()} for x in WORDS[4:7]]
+    with client.app.state.db.connect() as conn:
+        conn.execute("INSERT INTO clip_captions (clip_id, words_json) VALUES (?, ?)", (clip["id"], json.dumps(old)))
+    assert texts(client, clip) == ["Um, hello there friend.", "SECOND UH LINE.", "Last words."]

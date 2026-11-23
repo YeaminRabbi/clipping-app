@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,48 @@ def resolved_style(conn: sqlite3.Connection, project_id: int) -> CaptionStyle:
     return resolve(template, overrides)
 
 
+@dataclass
+class CaptionEdits:
+    """A clip's edited words, and the parts of the video (source ms) they replace the transcript in.
+
+    Inside those ranges, a word that isn't in `words` was deleted; outside them the transcript still counts.
+    """
+
+    words: list[dict[str, Any]]
+    ranges: list[tuple[int, int]]
+
+    @classmethod
+    def load(cls, conn: sqlite3.Connection, clip_id: int) -> "CaptionEdits | None":
+        row = conn.execute("SELECT words_json FROM clip_captions WHERE clip_id = ?", (clip_id,)).fetchone()
+        if row is None:
+            return None
+        data = json.loads(row["words_json"])
+        if isinstance(data, list):  # saved before ranges were: all that's known is where the words are
+            return cls(data, [(data[0]["start"], data[-1]["end"])] if data else [(0, 2**53)])
+        return cls(data["words"], [(a, b) for a, b in data["ranges"]])
+
+    def save(self, conn: sqlite3.Connection, clip_id: int) -> None:
+        conn.execute(
+            """INSERT INTO clip_captions (clip_id, words_json) VALUES (?, ?)
+               ON CONFLICT (clip_id) DO UPDATE SET words_json = excluded.words_json,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
+            (clip_id, json.dumps({"words": self.words, "ranges": self.ranges})),
+        )
+
+    def covers(self, word: dict[str, Any]) -> bool:
+        middle = (word["start"] + word["end"]) / 2
+        return any(a <= middle < b for a, b in self.ranges)
+
+    def with_range(self, start: int, end: int) -> list[tuple[int, int]]:
+        merged: list[tuple[int, int]] = []
+        for a, b in sorted([*self.ranges, (start, end)]):
+            if merged and a <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+            else:
+                merged.append((a, b))
+        return merged
+
+
 def clip_words(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[list[dict[str, Any]] | None, bool]:
     """(words inside the clip, whether the user edited them). None when there's no transcript yet.
 
@@ -87,19 +130,13 @@ def clip_words(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple
     """
     src = conn.execute("SELECT project_id FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
     transcript = load_transcript(settings, src["project_id"], clip["source_id"])
-    row = conn.execute("SELECT words_json FROM clip_captions WHERE clip_id = ?", (clip["id"],)).fetchone()
-    start, end = clip["start_ms"], clip["end_ms"]
-    if row is None:
-        if transcript is None:
-            return None, False
-        return words_for_clip(transcript["words"], start, end), False
-
-    edited = words_for_clip(json.loads(row["words_json"]), start, end)
-    if transcript is not None and edited:
-        first, last = edited[0]["start"], edited[-1]["end"]
-        extra = [w for w in words_for_clip(transcript["words"], start, end) if w["end"] <= first or w["start"] >= last]
-        edited = sorted(edited + extra, key=lambda w: w["start"])
-    return edited, True
+    edits = CaptionEdits.load(conn, clip["id"])
+    if edits is None and transcript is None:
+        return None, False
+    words = list(transcript["words"]) if transcript is not None else []
+    if edits is not None:
+        words = sorted(edits.words + [w for w in words if not edits.covers(w)], key=lambda w: w["start"])
+    return words_for_clip(words, clip["start_ms"], clip["end_ms"]), edits is not None
 
 
 def clip_cues(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[list[Cue] | None, bool, CaptionStyle]:
