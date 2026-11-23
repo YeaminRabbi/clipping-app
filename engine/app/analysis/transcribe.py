@@ -155,7 +155,8 @@ def transcribe(
         word_timestamps=True,
         vad_filter=True,
         condition_on_previous_text=False,  # reduces repeated-phrase hallucinations on long files
-        initial_prompt=FILLER_PROMPT,
+        # English; it would pull other languages towards English.
+        initial_prompt=FILLER_PROMPT if language in (None, "en") else None,
     )
     words: list[dict[str, Any]] = []
     for segment in segments:  # lazy: the work happens while iterating

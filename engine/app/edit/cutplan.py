@@ -10,6 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+# English only. Elsewhere these can be real words: "um" is "a" in Portuguese and "around" in German,
+# and "er" is "he" in German.
+FILLER_LANGUAGES = {"en"}
 FILLERS = {"um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "ahh", "hmm", "hm", "mm", "mhm"}
 WORD_GUARD_MS = 20  # never cut closer than this to a kept word
 FILLER_PAD_MS = 40  # take a little air with each filler

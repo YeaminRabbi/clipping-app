@@ -122,3 +122,17 @@ def test_good_style_values_are_kept(client, project):
     good = {"font": "Arial", "size": 72, "uppercase": True, "color": "#00ff00", "highlight": "", "position": "top"}
     body = client.put(f"/projects/{project['id']}/caption-style", json={"template": "classic", "overrides": good}).json()
     assert body["overrides"] == good and {k: body["style"][k] for k in good} == good
+
+
+# --- filler words are language specific (F-13) ---------------------------------------------------
+
+
+@pytest.mark.parametrize("language, removed", [("en", True), ("pt", False), ("de", False), ("bn", False), (None, False)])
+def test_fillers_are_only_removed_from_english(client, project, clip, language, removed):
+    path = client.app.state.ingest.source_dir(project["id"], clip["source_id"]) / "transcript.json"
+    data = json.loads(path.read_text()) | {"language": language}
+    path.write_text(json.dumps(data))
+    tighten(client, clip)
+    plan = client.get(f"/clips/{clip['id']}/cut-plan").json()
+    assert (plan["fillers"] > 0) == removed and (plan["removed_ms"] > 0) == removed
+    assert ("Um, hello there friend." in texts(client, clip)) != removed

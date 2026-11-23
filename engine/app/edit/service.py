@@ -1,6 +1,7 @@
 """Building a clip's cut plan from its Tighten settings, the transcript and the audio levels."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ from ..analysis.signals import LOUDNESS_PER_SECOND, cached_loudness, silence_thr
 from ..captions.cues import words_for_clip
 from ..captions.service import ensure_transcript, load_transcript
 from ..config import Settings
-from .cutplan import CutPlan, TightenSettings, plan_cuts, quiet_share_from_levels
+from .cutplan import FILLER_LANGUAGES, CutPlan, TightenSettings, plan_cuts, quiet_share_from_levels
 
 
 def tighten_settings(clip: Any) -> TightenSettings | None:
@@ -36,4 +37,6 @@ def plan_for_clip(
     levels = cached_loudness(tools.ffmpeg.path, Path(source["proxy_path"]), work_dir, source["duration_ms"], bool(source["has_audio"]))
     quiet = quiet_share_from_levels(levels, silence_threshold(levels), LOUDNESS_PER_SECOND)
     words = words_for_clip(transcript["words"], clip["start_ms"], clip["end_ms"])
+    if transcript.get("language") not in FILLER_LANGUAGES:
+        tighten = replace(tighten, remove_fillers=False)
     return plan_cuts(words, clip["start_ms"], clip["end_ms"], quiet, tighten, source["fps"] or 30)
