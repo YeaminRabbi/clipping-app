@@ -188,6 +188,13 @@ def trim_window(start_ms: int, end_ms: int, fps: str) -> tuple[float, Fraction]:
     return seek, (end_frame - start_frame) / rate
 
 
+# Audio is split into blocks this small (0.3 ms at 48 kHz) before cutting. Decoders hand out much bigger
+# ones (21 ms for AAC, up to 93 ms for FLAC), and whole blocks are kept or dropped, so every join would
+# otherwise be off by up to one. At 48 kHz, 16 divides a frame's samples at 24, 25, 30, 50 and 60 fps.
+AUDIO_BLOCK = 16
+AUDIO_RATE = 48000
+
+
 def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: bool) -> tuple[float, Fraction, str]:
     """(seek seconds, total duration, graph) keeping only the frames and audio inside `segments`.
 
@@ -208,7 +215,7 @@ def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: boo
     duration = sum((Fraction(fb - fa) / rate for fa, fb in frames), Fraction(0))
     graph = f"[0:v]select='{'+'.join(video_terms)}',setpts=N/({rate.numerator}/{rate.denominator})/TB[vsel]"
     if has_audio:
-        graph += f";[0:a]aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
+        graph += f";[0:a]aresample={AUDIO_RATE},asetnsamples=n={AUDIO_BLOCK}:p=0,aselect='{'+'.join(audio_terms)}',asetpts=N/SR/TB[asel]"
     return seek, duration, graph
 
 
