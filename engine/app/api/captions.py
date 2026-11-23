@@ -96,7 +96,9 @@ def edit_captions(clip_id: int, body: CaptionEdit, request: Request) -> dict[str
         words, _ = clip_words(conn, request.app.state.settings, clip)
         if words is None:
             raise HTTPException(409, "Transcribe the video first")
-        if any(i < 0 or i >= len(words) for i in body.indices) or body.indices != list(range(body.indices[0], body.indices[-1] + 1)):
+        # Increasing, but not necessarily consecutive: a cue skips the words Tighten cuts.
+        in_order = all(a < b for a, b in zip(body.indices, body.indices[1:]))
+        if not in_order or body.indices[0] < 0 or body.indices[-1] >= len(words):
             raise HTTPException(422, "Those caption words no longer exist; reload the captions")
         updated = apply_text_edit(words, body.indices, body.text)
         conn.execute(

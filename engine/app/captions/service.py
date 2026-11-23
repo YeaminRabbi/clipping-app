@@ -108,7 +108,8 @@ def clip_cues(conn: sqlite3.Connection, settings: Settings, clip: Any) -> tuple[
     words, edited = clip_words(conn, settings, clip)
     if words is None:
         return None, False, style
-    words = _without_cut_words(conn, settings, clip, words)
+    # Numbered before filtering: an edit names words by their place in the whole list (clip_words).
+    words = _without_cut_words(conn, settings, clip, [{**w, "index": i} for i, w in enumerate(words)])
     return make_cues(words, style, end_limit=clip["end_ms"]), edited, style
 
 

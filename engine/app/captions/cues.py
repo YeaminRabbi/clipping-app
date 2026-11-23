@@ -37,7 +37,7 @@ def words_for_clip(words: list[dict[str, Any]], start_ms: int, end_ms: int) -> l
 
 def make_cues(words: list[dict[str, Any]], style: CaptionStyle, end_limit: int | None = None) -> list[Cue]:
     """Split words into cues that fit the style's word and character limits, breaking at sentence ends
-    and pauses so a cue never straddles two thoughts."""
+    and pauses so a cue never straddles two thoughts. Words that already carry an `index` keep it."""
     limit_chars = style.max_chars * style.max_lines
     cues: list[Cue] = []
     current: list[dict[str, Any]] = []
@@ -53,7 +53,7 @@ def make_cues(words: list[dict[str, Any]], style: CaptionStyle, end_limit: int |
             ):
                 cues.append(Cue(current[0]["start"], current[-1]["end"], current))
                 current = []
-        current.append({**word, "index": i})
+        current.append({**word, "index": word.get("index", i)})
     if current:
         cues.append(Cue(current[0]["start"], current[-1]["end"], current))
 
@@ -68,28 +68,58 @@ def make_cues(words: list[dict[str, Any]], style: CaptionStyle, end_limit: int |
 def apply_text_edit(words: list[dict[str, Any]], indices: list[int], new_text: str) -> list[dict[str, Any]]:
     """Replace the words at `indices` (one cue) with `new_text`, keeping the cue's timing.
 
-    Same number of words: each keeps its own timing. Otherwise the cue's time span is shared out in
-    proportion to word length. Empty text deletes the words.
+    Same number of words: each keeps its own timing. Otherwise the cue's time is shared out in
+    proportion to word length. Empty text deletes the words. Words between the indices that the cue
+    doesn't show (fillers Tighten cuts) are left as they are, and new words never land on them.
     """
     if not indices:
         return words
-    old = [words[i] for i in indices]
-    start, end = old[0]["start"], old[-1]["end"]
     tokens = new_text.split()
-    if len(tokens) == len(old):
-        replacement = [{**w, "text": t} for w, t in zip(old, tokens)]
-    elif tokens:
-        total = sum(len(t) for t in tokens)
-        replacement, t = [], start
-        for token in tokens:
-            span = (end - start) * len(token) / total
-            replacement.append({"start": round(t), "end": round(t + span), "text": token})
-            t += span
-        replacement[-1]["end"] = end
-    else:
-        replacement = []
+    if len(tokens) == len(indices):
+        out = list(words)
+        for i, token in zip(indices, tokens):
+            out[i] = {**out[i], "text": token}
+        return out
     first, last = indices[0], indices[-1]
-    return words[:first] + replacement + words[last + 1 :]
+    chosen = set(indices)
+    hidden = [words[i] for i in range(first, last + 1) if i not in chosen]
+    middle = sorted(hidden + _spread(tokens, _runs(words, indices)), key=lambda w: w["start"])
+    return words[:first] + middle + words[last + 1 :]
+
+
+def _runs(words: list[dict[str, Any]], indices: list[int]) -> list[tuple[float, float]]:
+    """(start, end) of each stretch of neighbouring indices."""
+    runs: list[tuple[float, float]] = []
+    previous = None
+    for i in indices:
+        if previous is not None and i == previous + 1:
+            runs[-1] = (runs[-1][0], words[i]["end"])
+        else:
+            runs.append((words[i]["start"], words[i]["end"]))
+        previous = i
+    return runs
+
+
+def _spread(tokens: list[str], runs: list[tuple[float, float]]) -> list[dict[str, Any]]:
+    """Time `tokens` over the runs, skipping the gaps between them."""
+    if not tokens:
+        return []
+    total_chars = sum(len(t) for t in tokens)
+    total_time = sum(b - a for a, b in runs)
+    out, position = [], 0.0
+    for token in tokens:
+        span = total_time * len(token) / total_chars
+        # The run the token's middle falls in; the token stays inside it.
+        offset = 0.0
+        for a, b in runs:
+            if position + span / 2 <= offset + (b - a) or (a, b) == runs[-1]:
+                start, end = max(a, a + position - offset), min(b, a + position + span - offset)
+                break
+            offset += b - a
+        out.append({"start": round(start), "end": round(end), "text": token})
+        position += span
+    out[-1]["end"] = runs[-1][1]
+    return out
 
 
 def wrap(text: str, max_chars: int, max_lines: int) -> str:
