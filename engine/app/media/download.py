@@ -1,6 +1,7 @@
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 
 import yt_dlp
@@ -57,6 +58,36 @@ class _Logger:
         self.last_error = msg.removeprefix("ERROR: ")
 
 
+MAX_LINK_HOPS = 8
+
+
+def _single_video(ydl: yt_dlp.YoutubeDL, url: str, cancel: CancelToken) -> dict:
+    """What the link is, following redirects to other sites' players. Nothing is downloaded.
+
+    A list with one video counts as that video; more than one is an error the user can act on.
+    """
+    info = ydl.extract_info(url, download=False, process=False)
+    for _ in range(MAX_LINK_HOPS):
+        cancel.raise_if_cancelled()
+        kind = (info or {}).get("_type") or "video"
+        if kind == "video" and info:
+            return info
+        if kind in ("url", "url_transparent"):
+            outer, info = info, ydl.extract_info(info["url"], ie_key=info.get("ie_key"), download=False, process=False)
+            if kind == "url_transparent" and info and outer.get("title"):
+                info = {**info, "title": outer["title"]}
+            continue
+        if kind in ("playlist", "multi_video", "compat_list"):
+            entries = [e for e in islice(info.get("entries") or [], 2) if e]
+            if len(entries) > 1:
+                raise MediaError("This link has more than one video (a playlist, channel or album). Paste the link of a single video.")
+            if entries:
+                info = entries[0]
+                continue
+        break
+    raise MediaError("No video was found at this link.")
+
+
 def download(
     url: str,
     dest_dir: Path,
@@ -100,7 +131,10 @@ def download(
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            # Looked up first: a playlist or channel would otherwise download every entry, each over the last.
+            found = _single_video(ydl, url, cancel)
+            cancel.raise_if_cancelled()
+            info = ydl.process_ie_result(found, download=True)
     except Cancelled:
         raise
     except DownloadError as err:
