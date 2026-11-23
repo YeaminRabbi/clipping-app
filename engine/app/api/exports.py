@@ -76,9 +76,14 @@ def create_exports(body: ExportCreate, request: Request) -> list[dict[str, Any]]
                     mode, keyframes = "manual", [{"t": 0, **default_crop(aspect, clip["width"], clip["height"])}]
                 else:
                     mode, keyframes = framing, []
+                # A default is only stored as one: the next export may choose differently. A size that
+                # already has the same kind of framing keeps it (with its tracked path, if any).
                 conn.execute(
-                    """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json)
-                       VALUES (?, ?, ?, ?) ON CONFLICT (clip_id, aspect) DO NOTHING""",
+                    """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json, origin)
+                       VALUES (?, ?, ?, ?, 'default')
+                       ON CONFLICT (clip_id, aspect) DO UPDATE SET mode = excluded.mode,
+                         crop_keyframes_json = excluded.crop_keyframes_json, options_json = '{}'
+                       WHERE clip_formats.origin = 'default' AND clip_formats.mode != excluded.mode""",
                     (clip_id, aspect, mode, json.dumps(keyframes)),
                 )
                 format_id = conn.execute(
@@ -93,9 +98,9 @@ def create_exports(body: ExportCreate, request: Request) -> list[dict[str, Any]]
                     ratio=aspect.replace(":", "x"),
                 )
                 cur = conn.execute(
-                    """INSERT INTO export_jobs (clip_format_id, preset_json, output_name, batch_id, burn_captions, export_srt)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (format_id, preset_json, name, batch_id, int(burn), int(srt)),
+                    """INSERT INTO export_jobs (clip_format_id, preset_json, output_name, batch_id, burn_captions, export_srt, framing)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (format_id, preset_json, name, batch_id, int(burn), int(srt), mode),
                 )
                 created.append(exports.get_job(conn, cur.lastrowid))
     for job in created:

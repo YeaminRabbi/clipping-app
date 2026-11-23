@@ -268,3 +268,38 @@ def test_retrying_a_job_makes_a_complete_zip(client, project, source_id, tmp_pat
     renders.open.add("two")
     client.post(f"/exports/{jobs[1]['id']}/retry")
     assert eventually(lambda: (z := zip_of(client, project)) and len(z) == 2 and z) == ["one.mp4", "two.mp4"]
+
+
+# --- default framing (F-11) ----------------------------------------------------------------------
+
+
+def test_each_export_uses_its_own_default_framing(client, project, source_id, tmp_path, renders, monkeypatch):
+    tracked = []
+
+    def track(row, token):
+        tracked.append(row["clip_id"])
+        return [{"t": t, "x": 0.3, "y": 0.0, "w": 0.3, "h": 1.0} for t in (0, 20000)]
+
+    monkeypatch.setattr(client.app.state.exports, "_track", track)
+    clip = make_clip(client, source_id, "clip")
+    # Queued together: each must be rendered the way it was asked for, whatever comes after it.
+    jobs = [export(client, tmp_path, [clip], default_framing=f)[0] for f in ("center", "fit", "smart", "center")]
+    assert [j["mode"] for j in jobs] == ["manual", "fit", "smart", "manual"]
+    renders.open.add("clip")
+    for job in jobs:
+        eventually(lambda: status_of(client, project, job["id"]) == "done")
+    assert [status["mode"] for status in reversed(client.get(f"/projects/{project['id']}/exports").json())] == ["manual", "fit", "smart", "manual"]
+    assert tracked == [clip]
+
+
+def test_framing_set_in_the_editor_always_wins(client, project, source_id, tmp_path, renders):
+    clip = make_clip(client, source_id, "clip")
+    waiting = export(client, tmp_path, [clip], default_framing="center")[0]
+    client.put(f"/clips/{clip}/formats/9x16", json={"mode": "fit"})
+    assert status_mode(client, project, waiting["id"]) == "fit"
+    assert export(client, tmp_path, [clip], default_framing="center")[0]["mode"] == "fit"
+    renders.open.add("clip")
+
+
+def status_mode(client, project, job_id: int) -> str:
+    return next(j["mode"] for j in client.get(f"/projects/{project['id']}/exports").json() if j["id"] == job_id)

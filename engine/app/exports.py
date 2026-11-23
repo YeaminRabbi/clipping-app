@@ -48,8 +48,11 @@ ACTIVE_STATUSES = ("queued", "rendering")
 FINISHED_STATUSES = ("done", "failed", "cancelled")
 PROGRESS_INTERVAL_S = 0.4
 
-_JOB_SELECT = """
-    SELECT j.*, f.clip_id, f.aspect, f.mode, c.title AS clip_title, c.source_id, s.project_id
+# The framing chosen in the editor; else the default the export was started with.
+_MODE = "CASE WHEN f.origin = 'user' THEN f.mode ELSE COALESCE(j.framing, f.mode) END"
+
+_JOB_SELECT = f"""
+    SELECT j.*, f.clip_id, f.aspect, {_MODE} AS mode, c.title AS clip_title, c.source_id, s.project_id
     FROM export_jobs j
     JOIN clip_formats f ON f.id = j.clip_format_id
     JOIN clips c ON c.id = f.clip_id
@@ -239,7 +242,7 @@ class ExportManager:
         result = track_clip(self.settings, src, work_dir, row["start_ms"], row["end_ms"], row["aspect"], token, follow)
         with self.db.connect() as conn:
             conn.execute(
-                "UPDATE clip_formats SET crop_keyframes_json = ?, options_json = ? WHERE id = ?",
+                "UPDATE clip_formats SET crop_keyframes_json = ?, options_json = ? WHERE id = ? AND mode = 'smart'",
                 (json.dumps(result.keyframes), json.dumps(result.options(follow)), row["format_id"]),
             )
             clip_id = conn.execute("SELECT clip_id FROM clip_formats WHERE id = ?", (row["format_id"],)).fetchone()[0]
@@ -255,8 +258,8 @@ class ExportManager:
     def _run(self, job_id: int, token: CancelToken, batch_id: str | None = None) -> None:
         with self.db.connect() as conn:
             row = conn.execute(
-                """SELECT j.preset_json, j.output_name, j.batch_id, j.burn_captions, j.export_srt,
-                          f.id AS format_id, f.aspect, f.mode, f.crop_keyframes_json, f.options_json,
+                f"""SELECT j.preset_json, j.output_name, j.batch_id, j.burn_captions, j.export_srt,
+                          f.id AS format_id, f.aspect, {_MODE} AS mode, f.mode AS format_mode, f.crop_keyframes_json, f.options_json,
                           c.id AS clip_id, c.start_ms, c.end_ms, s.id AS source_id, s.path, s.status AS source_status
                    FROM export_jobs j
                    JOIN clip_formats f ON f.id = j.clip_format_id
@@ -292,7 +295,9 @@ class ExportManager:
             output_fps = info.fps_rational if preset["fps"] == "source" else str(preset["fps"])
             # Tighten: cut filler words and long pauses, then play the kept parts back to back.
             timemap = self._cut_plan(row, preset, token)
-            keyframes = json.loads(row["crop_keyframes_json"])
+            # The size may have been given another framing since this export was queued.
+            stored = row["mode"] == row["format_mode"]
+            keyframes = json.loads(row["crop_keyframes_json"]) if stored else []
             crop_px, path = None, None
             if row["mode"] == "smart":
                 if not keyframes_cover(keyframes, row["start_ms"], row["end_ms"]):
@@ -308,7 +313,7 @@ class ExportManager:
             elif row["mode"] != "fit":
                 crop = keyframes[0] if keyframes else default_crop(row["aspect"], info.width, info.height)
                 crop_px = crop_pixels(crop, row["aspect"], info.width, info.height)
-            fit = FitOptions.from_dict(json.loads(row["options_json"] or "{}"))
+            fit = FitOptions.from_dict(json.loads(row["options_json"] or "{}") if stored else {})
 
             folder = Path(preset["output_dir"])
             folder.mkdir(parents=True, exist_ok=True)

@@ -263,6 +263,12 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_export_jobs_format ON export_jobs(clip_format_id);
     CREATE INDEX idx_export_jobs_batch ON export_jobs(batch_id);
     """,
+    # Who chose a size's framing: the user in the editor, or an export's "sizes you haven't set up" option,
+    # which a later export may change. The export remembers its own choice.
+    """
+    ALTER TABLE clip_formats ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';
+    ALTER TABLE export_jobs ADD COLUMN framing TEXT;
+    """,
 ]
 
 

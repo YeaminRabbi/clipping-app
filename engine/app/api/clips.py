@@ -191,8 +191,8 @@ def set_format(clip_id: int, aspect_key: str, body: FormatUpdate, request: Reque
         _clip_or_404(conn, clip_id)
         try:
             conn.execute(
-                """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json, options_json) VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT (clip_id, aspect) DO UPDATE SET mode = excluded.mode,
+                """INSERT INTO clip_formats (clip_id, aspect, mode, crop_keyframes_json, options_json, origin) VALUES (?, ?, ?, ?, ?, 'user')
+                   ON CONFLICT (clip_id, aspect) DO UPDATE SET origin = 'user', mode = excluded.mode,
                      crop_keyframes_json = excluded.crop_keyframes_json, options_json = excluded.options_json""",
                 (clip_id, aspect, body.mode, json.dumps(keyframes), json.dumps(options)),
             )
