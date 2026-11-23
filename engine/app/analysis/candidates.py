@@ -174,6 +174,10 @@ def snap(
     return cand
 
 
-def words_in(words: list[dict[str, Any]], start: int, end: int) -> list[dict[str, Any]]:
-    """Words spoken (mostly) within [start, end]."""
-    return [w for w in words if w["start"] >= start - 50 and w["end"] <= end + 50]
+def words_in(words: list[dict[str, Any]], start: int, end: int, starts: list[int] | None = None) -> list[dict[str, Any]]:
+    """Words spoken (mostly) within [start, end]. `words` are in time order; `starts` are their start
+    times, when the caller has them, so a long video isn't searched from the beginning every time."""
+    starts = [w["start"] for w in words] if starts is None else starts
+    first = bisect.bisect_left(starts, start - 50)
+    last = bisect.bisect_right(starts, end + 50, lo=first)
+    return [w for w in words[first:last] if w["end"] <= end + 50]

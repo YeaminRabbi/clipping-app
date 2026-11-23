@@ -4,8 +4,10 @@ Each candidate gets features in 0..1, a weighted sum per mode becomes a 0-100 sc
 strongest contributions become the human-readable reasons shown in the app.
 """
 
+import bisect
 import re
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -50,14 +52,33 @@ class Signals:
     loudness: np.ndarray  # dB per 100 ms
     cuts: list[int]
     silences: list[tuple[int, int]]
+    # Sorted lookups: thousands of candidates are scored against thousands of words, cuts and silences.
+    word_starts: list[int] = field(init=False, repr=False)
+    silence_ends: list[int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.words = sorted(self.words, key=lambda w: w["start"])
+        self.cuts = sorted(self.cuts)
+        self.silences = sorted(self.silences)
+        self.word_starts = [w["start"] for w in self.words]
+        self.silence_ends = [e for _, e in self.silences]
+
+    def silent_ms(self, start: int, end: int) -> int:
+        """How much of [start, end] is silent. Silences don't overlap, so their ends are sorted too."""
+        total = 0
+        for i in range(bisect.bisect_right(self.silence_ends, start), len(self.silences)):
+            a, b = self.silences[i]
+            if a >= end:
+                break
+            total += min(b, end) - max(a, start)
+        return total
+
+    def cuts_inside(self, start: int, end: int) -> int:
+        return max(0, bisect.bisect_left(self.cuts, end) - bisect.bisect_right(self.cuts, start))
 
 
 def _keyword_patterns(keywords: list[str]) -> list[tuple[str, re.Pattern]]:
     return [(k, re.compile(r"\b" + re.escape(k.lower()) + r"\b")) for k in keywords if k.strip()]
-
-
-def _overlap_ms(spans: list[tuple[int, int]], start: int, end: int) -> int:
-    return sum(max(0, min(e, end) - max(s, start)) for s, e in spans)
 
 
 def features(
@@ -71,7 +92,7 @@ def features(
     p50, p90 = loud_ref
     mean_db = float(np.mean(levels)) if len(levels) else -90.0
 
-    words = words_in(sig.words, cand.start, cand.end)
+    words = words_in(sig.words, cand.start, cand.end, sig.word_starts)
     text = (cand.text or " ".join(w["text"] for w in words)).lower()
     first_word = re.sub(r"[^\w']", "", words[0]["text"].lower()) if words else ""
     first_sentence = (cand.sentences[0] if cand.sentences else text[:120]).lower()
@@ -82,12 +103,12 @@ def features(
         "energy": float(np.clip((mean_db - p50) / max(p90 - p50, 1.0), 0, 1)),
         "peaks": float(np.mean(levels >= p90)) * 2 if len(levels) else 0.0,
         "density": min(1.0, len(words) / seconds / 3.0),
-        "scenes": min(1.0, sum(1 for c in sig.cuts if cand.start < c < cand.end) / seconds * 2),
+        "scenes": min(1.0, sig.cuts_inside(cand.start, cand.end) / seconds * 2),
         "keywords": min(1.0, len(hits) / 2),
         "complete": 1.0 if text.rstrip().endswith((".", "!", "?")) else 0.0,
         "hook": 1.0 if ("?" in first_sentence or any(p in first_sentence for p in HOOK_PHRASES)) else 0.0,
         "emotion": min(1.0, text.count("!") * 0.5 + text.count("?") * 0.25),
-        "silence": _overlap_ms(sig.silences, cand.start, cand.end) / max(cand.duration, 1),
+        "silence": sig.silent_ms(cand.start, cand.end) / max(cand.duration, 1),
         "weak_start": 1.0 if first_word in WEAK_STARTS else 0.0,
         "clean": (0.5 if cand.clean_start else 0.0) + (0.5 if cand.clean_end else 0.0),
     }
@@ -95,7 +116,9 @@ def features(
     return f, hits
 
 
-def score_candidates(cands: list[Candidate], sig: Signals, mode: str, keywords: list[str]) -> None:
+def score_candidates(
+    cands: list[Candidate], sig: Signals, mode: str, keywords: list[str], check_cancelled: Callable[[], None] | None = None
+) -> None:
     weights = dict(WEIGHTS["talking" if mode == "talking" else "action"])
     patterns = _keyword_patterns(keywords)
     if not patterns:
@@ -108,7 +131,9 @@ def score_candidates(cands: list[Candidate], sig: Signals, mode: str, keywords: 
     audible = sig.loudness[sig.loudness > -89] if len(sig.loudness) else np.array([])
     loud_ref = (float(np.percentile(audible, 50)), float(np.percentile(audible, 90))) if len(audible) else (-60.0, -20.0)
 
-    for cand in cands:
+    for i, cand in enumerate(cands):
+        if check_cancelled and i % 500 == 0:
+            check_cancelled()
         f, hits = features(cand, sig, patterns, loud_ref)
         contributions = {k: w * f[k] for k, w in weights.items()}
         cand.score = round(float(np.clip(sum(contributions.values()), 0, 1)) * 100, 1)

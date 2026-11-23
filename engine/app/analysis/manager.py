@@ -248,7 +248,7 @@ class AnalysisManager:
             kept = conn.execute(
                 "SELECT start_ms, end_ms FROM clips WHERE source_id = ? AND status != 'suggested'", (source_id,)
             ).fetchall()
-            result = find_clips(settings, sig, duration, [(r["start_ms"], r["end_ms"]) for r in kept])
+            result = find_clips(settings, sig, duration, [(r["start_ms"], r["end_ms"]) for r in kept], token.raise_if_cancelled)
             token.raise_if_cancelled()
             removed = [r["id"] for r in conn.execute("SELECT id FROM clips WHERE source_id = ? AND status = 'suggested'", (source_id,))]
             exports.delete_clips(conn, self.export_manager, removed)

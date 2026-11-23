@@ -1,5 +1,6 @@
 """Putting the pieces together: candidates for the chosen mode, snapping, scoring and selection."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .candidates import Candidate, even_candidates, sentences, snap, talking_candidates, window_candidates
@@ -27,7 +28,13 @@ class FindResult:
     notes: list[str]
 
 
-def find_clips(s: FindSettings, sig: Signals, duration_ms: int, taken: list[tuple[int, int]]) -> FindResult:
+def find_clips(
+    s: FindSettings,
+    sig: Signals,
+    duration_ms: int,
+    taken: list[tuple[int, int]],
+    check_cancelled: Callable[[], None] | None = None,
+) -> FindResult:
     notes: list[str] = []
     mode = s.mode
     target = (s.min_ms + s.max_ms) // 2
@@ -51,7 +58,7 @@ def find_clips(s: FindSettings, sig: Signals, duration_ms: int, taken: list[tupl
     for cand in cands:
         snap(cand, sig.words, sig.cuts, sig.silences, duration_ms)
     cands = [c for c in cands if c.duration > 0]
-    score_candidates(cands, sig, mode, s.keywords)
+    score_candidates(cands, sig, mode, s.keywords, check_cancelled)
 
     chosen = cands if mode == "even" else select(cands, count, taken)
     if mode == "even":

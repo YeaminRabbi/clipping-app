@@ -1,6 +1,10 @@
 """Unit tests for clip finding on synthetic transcripts and signals."""
 
+import random
+import time
+
 import numpy as np
+import pytest
 
 from app.analysis.candidates import (
     LEAD_IN_MS,
@@ -10,8 +14,10 @@ from app.analysis.candidates import (
     sentences,
     snap,
     talking_candidates,
+    words_in,
 )
 from app.analysis.finder import FindSettings, find_clips, next_alternate
+from app.media import Cancelled
 from app.analysis.scoring import Signals, auto_count, score_candidates, select
 
 
@@ -164,3 +170,59 @@ def test_next_alternate_skips_shown_and_overlapping():
     assert next_alternate(pool, taken=[(25, 26)], skip={(0, 10)}) == {"start": 5, "end": 15}
     assert next_alternate(pool, taken=[(0, 16)], skip=set()) == {"start": 20, "end": 30}
     assert next_alternate(pool, taken=[(0, 60)], skip=set()) is None
+
+
+# --- long videos (F-21) --------------------------------------------------------------------------
+
+
+def long_talk(hours: float) -> tuple[list[dict], int]:
+    rng = random.Random(1)
+    words, t = [], 0
+    while t < hours * 3_600_000:
+        count = rng.randint(6, 16)
+        for i in range(count):
+            length = rng.randint(180, 380)
+            words.append({"start": t, "end": t + length, "text": "word." if i == count - 1 else "word"})
+            t += length + rng.randint(0, 60)
+        t += rng.randint(100, 700)
+    return words, t
+
+
+def long_signals(hours: float):
+    words, duration = long_talk(hours)
+    rng = random.Random(2)
+    edges = sorted(rng.sample(range(duration), 4000))
+    silences_ = list(zip(edges[::2], edges[1::2]))
+    cuts = sorted(rng.sample(range(duration), 900))
+    return Signals(words, np.full(duration // 100, -25.0), cuts, silences_), duration
+
+
+def test_lookups_give_the_same_as_searching_everything():
+    sig, duration = long_signals(0.2)
+    rng = random.Random(3)
+    for _ in range(200):
+        start = rng.randrange(duration - 70_000)
+        end = start + rng.randrange(1_000, 60_000)
+        assert words_in(sig.words, start, end, sig.word_starts) == [w for w in sig.words if w["start"] >= start - 50 and w["end"] <= end + 50]
+        assert sig.silent_ms(start, end) == sum(max(0, min(e, end) - max(s, start)) for s, e in sig.silences)
+        assert sig.cuts_inside(start, end) == sum(1 for c in sig.cuts if start < c < end)
+
+
+def test_three_hours_of_talk_are_scored_quickly():
+    sig, duration = long_signals(3)
+    begun = time.monotonic()
+    result = find_clips(FindSettings("talking", None, 15_000, 60_000, 0, duration), sig, duration, [])
+    assert result.chosen and time.monotonic() - begun < 20, "took a minute when every word was searched for every candidate"
+
+
+def test_scoring_can_be_cancelled():
+    sig, duration = long_signals(0.5)
+    calls = []
+
+    def cancelled():
+        calls.append(1)
+        if len(calls) == 2:
+            raise Cancelled()
+
+    with pytest.raises(Cancelled):
+        find_clips(FindSettings("talking", None, 15_000, 60_000, 0, duration), sig, duration, [], cancelled)
