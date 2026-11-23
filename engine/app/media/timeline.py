@@ -77,7 +77,6 @@ def make_waveform(ffmpeg: str, proxy: Path, dest: Path, cancel: CancelToken) -> 
     try:
         while chunk := proc.stdout.read(WAVEFORM_SAMPLE_RATE * 2 * 30):  # 30 s at a time
             if cancel.cancelled:
-                proc.kill()
                 raise Cancelled()
             samples = np.concatenate([leftover, np.frombuffer(chunk[: len(chunk) // 2 * 2], dtype=np.int16)])
             usable = len(samples) // bucket * bucket
@@ -86,6 +85,9 @@ def make_waveform(ffmpeg: str, proxy: Path, dest: Path, cancel: CancelToken) -> 
             leftover = samples[usable:]
         if len(leftover):
             peaks.append(np.array([np.abs(leftover.astype(np.int32)).max()]))
+    except BaseException:
+        proc.kill()  # nobody reads its output any more, so it would wait forever
+        raise
     finally:
         proc.wait()
     if proc.returncode not in (0, None) and not peaks:

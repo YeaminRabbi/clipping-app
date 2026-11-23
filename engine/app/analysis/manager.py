@@ -2,9 +2,11 @@
 
 import json
 import logging
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +140,8 @@ class AnalysisManager:
             now = time.monotonic()
             if now - last["t"] >= PROGRESS_INTERVAL_S:
                 last["t"] = now
-                self._update(source_id, token, progress=round(start + span * fraction, 4))
+                with suppress(sqlite3.OperationalError):  # database busy: the next update will do
+                    self._update(source_id, token, progress=round(start + span * fraction, 4))
 
         return report
 

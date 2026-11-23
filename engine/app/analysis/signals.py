@@ -42,19 +42,23 @@ def scene_cuts(
     assert proc.stderr is not None
     # FFmpeg ends progress lines with \r, so read raw chunks and split on either line ending.
     buffer = ""
-    while chunk := proc.stderr.read(4096):
-        if cancel.cancelled:
-            proc.kill()
-            raise Cancelled()
-        buffer += chunk
-        *lines, buffer = re.split(r"[\r\n]", buffer)
-        for line in lines:
-            if m := _SCD_TIME.search(line):
-                cuts.append(round(float(m.group(1)) * 1000))
-            elif on_progress and duration_ms and (t := _OUT_TIME.search(line)):
-                seconds = int(t.group(1)) * 3600 + int(t.group(2)) * 60 + float(t.group(3))
-                on_progress(min(1.0, seconds * 1000 / duration_ms))
-    proc.wait()
+    try:
+        while chunk := proc.stderr.read(4096):
+            if cancel.cancelled:
+                raise Cancelled()
+            buffer += chunk
+            *lines, buffer = re.split(r"[\r\n]", buffer)
+            for line in lines:
+                if m := _SCD_TIME.search(line):
+                    cuts.append(round(float(m.group(1)) * 1000))
+                elif on_progress and duration_ms and (t := _OUT_TIME.search(line)):
+                    seconds = int(t.group(1)) * 3600 + int(t.group(2)) * 60 + float(t.group(3))
+                    on_progress(min(1.0, seconds * 1000 / duration_ms))
+    except BaseException:
+        proc.kill()
+        raise
+    finally:
+        proc.wait()
     return sorted(set(c for c in cuts if 0 < c < duration_ms))
 
 

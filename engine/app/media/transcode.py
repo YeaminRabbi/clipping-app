@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -44,11 +45,16 @@ def run_ffmpeg(
     watcher.start()
 
     assert proc.stdout is not None
-    for line in proc.stdout:
-        key, _, value = line.strip().partition("=")
-        if key == "out_time_us" and on_progress and duration_ms > 0 and value.isdigit():
-            on_progress(min(1.0, int(value) / 1000 / duration_ms))
-    proc.wait()
+    try:
+        for line in proc.stdout:
+            key, _, value = line.strip().partition("=")
+            if key == "out_time_us" and on_progress and duration_ms > 0 and value.isdigit():
+                on_progress(min(1.0, int(value) / 1000 / duration_ms))
+    finally:
+        # However this ends, FFmpeg must not outlive it (it would keep writing a file nobody wants).
+        if sys.exc_info()[0] is not None:
+            proc.kill()
+        proc.wait()
     drain.join(timeout=2)
 
     if cancel.cancelled:

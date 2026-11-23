@@ -10,6 +10,7 @@ import time
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -339,7 +340,8 @@ class ExportManager:
                 now = time.monotonic()
                 if now - last["t"] >= PROGRESS_INTERVAL_S:
                     last["t"] = now
-                    self._update(job_id, token, progress=round(fraction, 4))
+                    with suppress(sqlite3.OperationalError):  # database busy: the next update will do
+                        self._update(job_id, token, progress=round(fraction, 4))
 
             def render(enc: str) -> None:
                 self._update(job_id, token, encoder=enc)
