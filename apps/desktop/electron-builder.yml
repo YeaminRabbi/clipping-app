@@ -1,0 +1,41 @@
+# Windows installer for Clipping App. Build with `npm run dist` from the project root.
+appId: com.clippingapp.desktop
+productName: Clipping App
+copyright: Copyright © 2026 Clipping App
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # The Python engine (PyInstaller folder) and FFmpeg live next to the app, not inside the asar archive.
+  - from: ../../engine/dist/clipping-engine
+    to: engine
+  - from: ../../bin
+    to: bin
+    filter:
+      - ffmpeg.exe
+      - ffprobe.exe
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Clipping App
+  # Keep projects, models and logs on uninstall; they live in the user's AppData.
+  deleteAppDataOnUninstall: false
+  artifactName: Clipping-App-Setup-${version}.${ext}
+# Auto-update reads releases from GitHub. Publishing needs a GH_TOKEN (see README).
+publish:
+  provider: github
+  owner: YeaminRabbi
+  repo: clipping-app
+  releaseType: release
