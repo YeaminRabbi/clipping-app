@@ -1,6 +1,7 @@
 import json
+import statistics
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -9,6 +10,14 @@ from . import MediaError
 
 # r_frame_rate vs avg_frame_rate differing by more than this means the frame timing is uneven.
 VFR_TOLERANCE = 0.01
+# Headers can hide it (Matroska states one "default" rate for both), so the actual frame times are
+# sampled too: all of a short video, else a few windows spread over it.
+SAMPLE_ALL_BELOW_S = 60
+SAMPLE_WINDOWS = 8
+SAMPLE_WINDOW_S = 3
+UNEVEN_SHARE = 0.02  # this share of frames may be off the usual spacing (a dropped frame here and there)
+
+STANDARD_RATES = [Fraction(r) for r in ("24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60")]
 
 
 @dataclass
@@ -33,6 +42,32 @@ def _rate(value: str | None) -> Fraction | None:
     except (ValueError, ZeroDivisionError):
         return None
     return rate if rate and rate > 0 else None
+
+
+def grid_rate(average: Fraction, stated: Fraction | None, is_vfr: bool) -> Fraction:
+    """The constant rate to edit and export at. Constant: the video's own, exactly (59.9401 means
+    60000/1001). Variable: its full speed when it runs at that most of the time, else 30 or 60."""
+    if is_vfr and stated in STANDARD_RATES and average >= stated * Fraction(55, 100):
+        return stated
+    nearest = min(STANDARD_RATES, key=lambda rate: abs(average / rate - 1))
+    if abs(average / nearest - 1) < Fraction(1, 2000):
+        return nearest
+    if not is_vfr:
+        return average
+    return Fraction(30) if average <= 45 else Fraction(60)
+
+
+def uneven_timing(times: list[float]) -> bool:
+    """Whether frames come at uneven intervals, from a sample of their times (seconds)."""
+    ordered = sorted(set(times))
+    # A second or more between frames is the gap between two sampled windows.
+    steps = [b - a for a, b in zip(ordered, ordered[1:]) if b - a < 1]
+    if len(steps) < 10:
+        return False
+    usual = statistics.median(steps)
+    # Formats that store whole milliseconds jitter by one.
+    tolerance = max(0.0015, usual * 0.1)
+    return sum(abs(s - usual) > tolerance for s in steps) > len(steps) * UNEVEN_SHARE
 
 
 def _seconds(value: str | None) -> float | None:
@@ -68,6 +103,8 @@ def parse_probe(data: dict) -> MediaInfo:
     if rate is None:
         raise MediaError("Could not determine the video frame rate")
     is_vfr = bool(avg and real and abs(float(avg) - float(real)) / float(real) > VFR_TOLERANCE)
+
+    rate = grid_rate(rate, real, is_vfr)
 
     duration = (data.get("format") or {}).get("duration") or video.get("duration")
     if not duration:
@@ -112,4 +149,26 @@ def probe(ffprobe: str, path: Path) -> MediaInfo:
     if result.returncode != 0:
         detail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "unknown error"
         raise MediaError(f"Not a readable video file ({detail})")
-    return parse_probe(json.loads(result.stdout))
+    data = json.loads(result.stdout)
+    info = parse_probe(data)
+    if not info.is_vfr and uneven_timing(_sample_frame_times(ffprobe, path, info.duration_ms / 1000, data)):
+        info = replace(info, is_vfr=True)
+    return info
+
+
+def _sample_frame_times(ffprobe: str, path: Path, duration_s: float, data: dict) -> list[float]:
+    """Presentation times of some video frames. Reads packets only (nothing is decoded); empty on failure."""
+    intervals: list[str] = []
+    if duration_s > SAMPLE_ALL_BELOW_S:
+        origin = _seconds((data.get("format") or {}).get("start_time")) or 0.0
+        starts = [origin + duration_s * i / SAMPLE_WINDOWS for i in range(SAMPLE_WINDOWS)]
+        intervals = ["-read_intervals", ",".join(f"{s:.3f}%+{SAMPLE_WINDOW_S}" for s in starts)]
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0", *intervals, "-show_entries", "packet=pts_time", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, creationflags=NO_WINDOW,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return []
+    times = (_seconds(line.strip().rstrip(",")) for line in result.stdout.splitlines())
+    return [t for t in times if t is not None]
