@@ -11,6 +11,7 @@
     "dev": "npm --workspace apps/desktop run dev",
     "build": "npm --workspace apps/desktop run build",
     "typecheck": "npm --workspace apps/desktop run typecheck",
+    "test:desktop": "node --experimental-strip-types --test \"apps/desktop/tests/*.test.mjs\"",
     "test:engine": "node scripts/run-engine-tests.mjs",
     "build:engine": "node scripts/build-engine.mjs",
     "dist": "npm run build:engine && npm --workspace apps/desktop run dist",

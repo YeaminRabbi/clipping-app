@@ -90,7 +90,13 @@ Speech models aren't in the installer: each one downloads the first time it's us
 ## Publishing an update
 
 Installed apps check GitHub Releases of `YeaminRabbi/clipping-app` on startup and every 6 hours,
-download a newer version in the background, and offer "Restart to update".
+and what happens next depends on whether the build is code-signed:
+
+- **Signed**: a newer version downloads in the background, its publisher is checked against the installed
+  app's, and "Restart to update" appears (it also installs when the app is closed).
+- **Not signed** (the case today): nothing downloads or installs by itself. The header says a version is
+  available; "Download" fetches it and "Restart to update" asks for confirmation, because the app has no
+  way to check who made it.
 
 1. Bump `version` in `apps/desktop/package.json` (e.g. `0.1.0` → `0.2.0`).
 2. Create a GitHub token with `repo` scope and set it: `set GH_TOKEN=...`

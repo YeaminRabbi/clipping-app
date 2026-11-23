@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { UpdateStatus } from '../../../shared/types'
 
-/** Shows when a newer version has been downloaded, with a button to restart into it. */
+/** Shows a newer version: a button to download it (unsigned builds) or to restart into it once downloaded. */
 export function UpdateBanner() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
 
@@ -12,6 +12,16 @@ export function UpdateBanner() {
 
   if (status?.state === 'downloading') {
     return <span className="text-xs text-muted">Downloading update {status.version} · {status.percent ?? 0}%</span>
+  }
+  if (status?.state === 'available') {
+    return (
+      <div className="flex items-center gap-2 rounded-full border border-line bg-panel-2 py-1 pr-1 pl-3 text-xs text-muted">
+        Version {status.version} is available
+        <button onClick={() => void window.clipping.app.downloadUpdate()} className="rounded-full border border-line px-2.5 py-0.5 hover:bg-panel">
+          Download
+        </button>
+      </div>
+    )
   }
   if (status?.state !== 'ready') return null
   return (

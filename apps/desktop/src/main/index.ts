@@ -3,7 +3,7 @@ import { extname, isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from 'electron'
 import { EngineProcess } from './engine'
 import { log, logsDir } from './log'
-import { checkForUpdates, installUpdate, startAutoUpdates, updateStatus } from './updater'
+import { checkForUpdates, downloadUpdate, installUpdate, startAutoUpdates, updateStatus } from './updater'
 
 // Development runs keep their own projects and settings, so they never touch the installed app's data.
 if (!app.isPackaged) app.setPath('userData', join(app.getPath('appData'), 'Clipping App Dev'))
@@ -54,7 +54,8 @@ function registerIpc(): void {
   ipcMain.on('app:renderer-error', (_event, message: string) => log('error', `renderer: ${message}`))
   ipcMain.handle('update:get-status', () => updateStatus())
   ipcMain.handle('update:check', () => checkForUpdates())
-  ipcMain.handle('update:install', () => installUpdate(() => engine.stop()))
+  ipcMain.handle('update:download', () => downloadUpdate())
+  ipcMain.handle('update:install', (event) => installUpdate(BrowserWindow.fromWebContents(event.sender), () => engine.stop()))
   ipcMain.handle('engine:get-status', () => engine.getStatus())
   ipcMain.handle('engine:restart', () => engine.restart())
   ipcMain.handle('files:pick-videos', async (event) => {

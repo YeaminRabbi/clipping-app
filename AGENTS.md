@@ -81,6 +81,7 @@ the npm scripts directly.
 | Put FFmpeg in `bin/` | `npm run bundle:ffmpeg` (copies from PATH), or `npm run bundle:ffmpeg -- <folder containing ffmpeg.exe>` |
 | Run the app (dev) | `npm run dev` (electron-vite: renderer on http://localhost:5173, then Electron starts the engine itself) |
 | Type-check the UI | `npm run typecheck` |
+| Desktop tests | `npm run test:desktop` (node:test; main-process logic that doesn't need Electron) |
 | Engine tests | `npm run test:engine` (pytest in the venv; extra args pass through, e.g. `npm run test:engine -- tests/test_editing.py -k export`) |
 | Drive the running app | `node scripts/clip.mjs <command>` (see "Driving the app" above) |
 | Run the engine alone | `cd engine && .venv/Scripts/python run.py --port 8765` (no auth, data in `.data/`) |
@@ -105,7 +106,7 @@ apps/desktop/src/
   main/index.ts        window, IPC handlers (file pickers, open/reveal files), app lifecycle
   main/engine.ts       spawns the engine (dev: engine/.venv python run.py; packaged: clipping-engine.exe), waits for ENGINE_READY,
                        writes/removes engine.json (connection file for scripts/clip.mjs)
-  main/updater.ts      electron-updater (GitHub releases)
+  main/updater.ts      electron-updater (GitHub releases); updatePolicy.ts decides what it may do unasked (signed builds only)
   preload/index.ts     exposes window.clipping (typed by ClippingBridge in shared/types.ts)
   shared/types.ts      types shared by main, preload and renderer (EngineStatus, ClippingBridge)
   renderer/src/

@@ -13,6 +13,7 @@ const bridge: ClippingBridge = {
       return () => ipcRenderer.removeListener('update:status', handler)
     },
     checkForUpdates: () => ipcRenderer.invoke('update:check'),
+    downloadUpdate: () => ipcRenderer.invoke('update:download'),
     installUpdate: () => ipcRenderer.invoke('update:install')
   },
   engine: {

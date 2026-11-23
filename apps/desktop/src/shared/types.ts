@@ -14,7 +14,7 @@ export interface EngineStatus {
 }
 
 export interface UpdateStatus {
-  state: 'idle' | 'disabled' | 'checking' | 'up-to-date' | 'downloading' | 'ready' | 'error'
+  state: 'idle' | 'disabled' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
   version: string | null
   percent: number | null
   error: string | null
@@ -35,6 +35,8 @@ export interface ClippingBridge {
     getUpdateStatus(): Promise<UpdateStatus>
     onUpdateStatus(listener: (status: UpdateStatus) => void): () => void
     checkForUpdates(): Promise<void>
+    /** Unsigned builds download an update only when asked. */
+    downloadUpdate(): Promise<void>
     installUpdate(): Promise<void>
   }
   engine: {
