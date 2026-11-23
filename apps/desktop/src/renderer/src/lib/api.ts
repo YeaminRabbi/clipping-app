@@ -1,3 +1,4 @@
+import { keepConnected, type EventSocket } from './events'
 import type { EngineStatus } from '../../../shared/types'
 
 export interface ToolInfo {
@@ -464,17 +465,9 @@ export class EngineClient {
     return `${this.baseUrl}${path}?token=${this.token}`
   }
 
-  /** Subscribe to engine events (job progress etc.). Returns a function that closes the socket. */
-  subscribe(onEvent: (event: string, data: unknown) => void): () => void {
-    const ws = new WebSocket(`${this.baseUrl.replace(/^http/, 'ws')}/ws?token=${this.token}`)
-    ws.onmessage = (msg) => {
-      try {
-        const { event, data } = JSON.parse(msg.data)
-        onEvent(event, data)
-      } catch {
-        // Ignore malformed frames.
-      }
-    }
-    return () => ws.close()
+  /** Subscribe to engine events (job progress etc.), reconnecting when the connection drops. Returns a function that stops it. */
+  subscribe(onEvent: (event: string, data: unknown) => void, onReconnect: () => void): () => void {
+    const url = `${this.baseUrl.replace(/^http/, 'ws')}/ws?token=${this.token}`
+    return keepConnected(() => new WebSocket(url) as EventSocket, onEvent, onReconnect)
   }
 }

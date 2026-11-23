@@ -173,7 +173,7 @@ export const useApp = create<AppState>((set, get) => {
     // failed requests while the engine was down, no longer describe the current state.
     const reconnected = client !== null && (previous.url !== engine.url || previous.token !== engine.token)
     unsubscribeEvents?.()
-    unsubscribeEvents = client ? client.subscribe(onEngineEvent) : null
+    unsubscribeEvents = client ? client.subscribe(onEngineEvent, () => void get().refresh()) : null
     set({ engine, client, ...(client ? {} : { health: null }), ...(reconnected ? { error: null } : {}) })
     if (client) void get().refresh()
   }
