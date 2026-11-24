@@ -7,7 +7,7 @@ import { Modal } from './Modal'
 const PREFS_KEY = 'clipping.autoClipPrefs'
 
 const MODES: { key: AnalysisMode; title: string; text: string }[] = [
-  { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Picks complete thoughts with strong openings.' },
+  { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Favors immediate hooks, takeaways and sustained speech.' },
   { key: 'action', title: 'Action', text: 'Gaming, sports, vlogs. Picks loud, fast-moving moments.' },
   { key: 'even', title: 'Even split', text: 'No scoring: splits the video into evenly spaced parts.' }
 ]
@@ -246,6 +246,7 @@ export function AutoClipDialog() {
                 className={`${inputClass} w-full`}
               />
               <p className="mt-1.5 text-[11px] text-muted">Moments that mention these words are ranked higher. Separate with commas.</p>
+              <p className="mt-1.5 text-[11px] text-muted">Scores compare moments in this video; they do not predict views. Talking also penalizes intros, promotions and repeated speech. English phrase cues complement timing and audio signals.</p>
             </Section>
           )}
 

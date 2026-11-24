@@ -10,21 +10,17 @@ from dataclasses import dataclass
 import numpy as np
 
 from .candidates import Candidate, words_in
+from .engagement import text_features
 from .signals import LOUDNESS_PER_SECOND
 
 WEAK_STARTS = {"and", "but", "so", "because", "or", "then", "also", "anyway", "plus", "which", "um", "uh"}
-HOOK_PHRASES = (
-    "here is", "here's", "the most", "the biggest", "the best", "the worst", "the secret", "the truth",
-    "let me tell you", "nobody", "no one", "never", "always", "why", "how to", "the reason", "the key",
-    "i learned", "lesson", "mistake", "imagine", "what if", "you need to", "stop",
-)  # fmt: skip
-
 # Weights per mode. Positive weights add up to 1 so a perfect clip scores 100.
 WEIGHTS: dict[str, dict[str, float]] = {
     "talking": {
-        "keywords": 0.25, "hook": 0.20, "density": 0.15, "energy": 0.15,
-        "complete": 0.10, "emotion": 0.10, "peaks": 0.05,
-        "silence": -0.40, "weak_start": -0.20,
+        "keywords": 0.15, "hook": 0.22, "density": 0.10, "energy": 0.08,
+        "complete": 0.10, "payoff": 0.12, "contrast": 0.08, "coverage": 0.10, "peaks": 0.05,
+        "silence": -0.40, "weak_start": -0.15, "intro": -0.20,
+        "promo": -0.20, "repetition": -0.25, "slow_start": -0.15,
     },
     "action": {
         "energy": 0.25, "peaks": 0.25, "scenes": 0.20, "keywords": 0.15, "clean": 0.10, "density": 0.05,
@@ -38,7 +34,9 @@ REASON_LABELS = {
     "energy": "high energy",
     "peaks": "loud moments",
     "complete": "complete thought",
-    "emotion": "emotional moment",
+    "payoff": "conclusion or takeaway cue",
+    "contrast": "contrast or surprise cue",
+    "coverage": "sustained speech",
     "scenes": "lots of action",
     "clean": "clean scene boundaries",
 }
@@ -74,23 +72,32 @@ def features(
     words = words_in(sig.words, cand.start, cand.end)
     text = (cand.text or " ".join(w["text"] for w in words)).lower()
     first_word = re.sub(r"[^\w']", "", words[0]["text"].lower()) if words else ""
-    first_sentence = (cand.sentences[0] if cand.sentences else text[:120]).lower()
+    # A hook late in a long sentence cannot rescue a slow opening. Use actual word timings.
+    opening_words = [w for w in words if w["start"] < cand.start + 3000]
+    ending_words = [w for w in words if w["end"] > cand.end - 6000]
+    opening = " ".join(w["text"] for w in opening_words)
+    ending = " ".join(w["text"] for w in ending_words)
+    spoken_ms = sum(max(0, min(w["end"], cand.end) - max(w["start"], cand.start)) for w in words)
+    delay = max(0, words[0]["start"] - cand.start) if words else 0
 
     hits = [k for k, pattern in keywords if pattern.search(text)]
     f = {
-        # Loudness relative to the whole video: 0 at its median, 1 at its 90th percentile and above.
-        "energy": float(np.clip((mean_db - p50) / max(p90 - p50, 1.0), 0, 1)),
-        "peaks": float(np.mean(levels >= p90)) * 2 if len(levels) else 0.0,
+        # Mostly relative energy, with a small audibility baseline so steady sound beats silence.
+        "energy": float(0.9 * np.clip((mean_db - p50) / max(p90 - p50, 1.0), 0, 1)
+                        + 0.1 * np.clip((mean_db + 60) / 40, 0, 1)),
+        # Flat audio is not a highlight just because every sample equals its 90th percentile.
+        "peaks": float(np.mean(levels >= p90)) * 2 if len(levels) and p90 - p50 >= 1 else 0.0,
         "density": min(1.0, len(words) / seconds / 3.0),
         "scenes": min(1.0, sum(1 for c in sig.cuts if cand.start < c < cand.end) / seconds * 2),
         "keywords": min(1.0, len(hits) / 2),
         "complete": 1.0 if text.rstrip().endswith((".", "!", "?")) else 0.0,
-        "hook": 1.0 if ("?" in first_sentence or any(p in first_sentence for p in HOOK_PHRASES)) else 0.0,
-        "emotion": min(1.0, text.count("!") * 0.5 + text.count("?") * 0.25),
+        "coverage": min(1.0, spoken_ms / max(cand.duration, 1) / 0.65),
+        "slow_start": min(1.0, delay / 2000),
         "silence": _overlap_ms(sig.silences, cand.start, cand.end) / max(cand.duration, 1),
         "weak_start": 1.0 if first_word in WEAK_STARTS else 0.0,
         "clean": (0.5 if cand.clean_start else 0.0) + (0.5 if cand.clean_end else 0.0),
     }
+    f.update(text_features(text, opening, ending))
     f["peaks"] = min(1.0, f["peaks"])
     return f, hits
 
@@ -117,6 +124,11 @@ def score_candidates(cands: list[Candidate], sig: Signals, mode: str, keywords: 
         reasons += [REASON_LABELS[k] for _, k in reversed(top)][: 3 - len(reasons)]
         if f["weak_start"] and mode == "talking":
             reasons.append("starts mid-thought")
+        if mode == "talking":
+            for key, label in (("intro", "intro before the main point"), ("promo", "promotional segment"),
+                               ("repetition", "repeated speech"), ("slow_start", "slow opening")):
+                if f[key] >= 0.5:
+                    reasons.append(label)
         cand.reasons = reasons
 
 

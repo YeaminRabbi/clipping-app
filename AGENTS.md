@@ -131,9 +131,15 @@ engine/
   app/api/             routers: projects, sources (+ /media/...), clips, analysis, captions, exports, ui (/ui/show)
   app/media/           blocking FFmpeg work: probe, download, transcode (proxy/poster), timeline assets, render
   app/analysis/        auto clipping: transcribe → signals → candidates → scoring → finder; manager = background job
+                       engagement.py supplies English opening/takeaway/contrast cues and intro/promo/repetition penalties;
+                       scoring uses the first 3 seconds for hooks, the final 6 seconds for takeaway cues
   app/reframe/         face detection (YuNet), speaker detection, smooth shot-aware crop paths
   app/captions/        cues from words, styles/templates, ASS (burn-in) and SRT output
   app/edit/            Tighten: cut plan (fillers/pauses) and TimeMap (source time → tightened time)
+                       sequence.py combines ordered source sections with per-section Tighten cuts;
+                       TimeMap also supports reordered/repeated ranges for captions and smart framing
+  app/api/assembly.py  managed audio imports and collage creation (uses export jobs followed by ingest)
+  app/media/assembly.py joins collage parts, normalizing audio and filling silent sections
   models/              bundled YuNet face model
   tests/               pytest; conftest makes synthetic videos with FFmpeg; speech tests use Windows TTS
 
@@ -148,6 +154,11 @@ PLAN.md                product plan and roadmap. Its "Folder Structure" section 
 - `projects` → `sources` (an imported video: status, probe info, proxy/poster paths)
 - `sources` → `clips` (start_ms/end_ms in source time, title, score, reasons, `edit_json` holding Tighten settings)
 - `clips` → `clip_formats` (one per aspect: `mode` = manual | smart | fit, `crop_keyframes_json`, `options_json` for fit style or tracking stats)
+- Clip `edit_json` also stores ordered `segments` (`start_ms`, `end_ms`, source times) and `audio`
+  layers (`asset_id`, output `start_ms`/`end_ms`, audio-file `offset_ms`, `volume`, `original_volume`).
+  A segmented clip's top-level range encloses all its sections; edit sections instead of trimming that envelope.
+- `audio_assets` stores copied project-local audio and its duration. Sources with `composition_json`
+  contain an ordered list of internal export job IDs; ingest joins them and creates one editable clip.
 - `clip_formats` → `export_jobs` (preset_json, status, progress, output_path); `export_batches` group jobs for ZIP output
 - `analyses` (latest auto-clip run per source), `caption_styles` (one per project), `clip_captions` (the user's word edits)
 
@@ -158,6 +169,7 @@ PLAN.md                product plan and roadmap. Its "Folder Structure" section 
 | projects | `GET/POST /projects`, `GET/DELETE /projects/{id}` |
 | sources | `GET/POST /projects/{id}/sources`, `GET /sources/{id}`, `POST /sources/{id}/cancel`, `POST /sources/{id}/retry`, `DELETE /sources/{id}`, media: `/media/sources/{id}/thumbs`, `/waveform`, `/{kind}` (proxy, poster) |
 | clips | `GET /sources/{id}/clips`, `GET /projects/{id}/clips`, `POST /sources/{id}/clips`, `PATCH /clips/{id}`, `GET /clips/{id}/cut-plan`, `PUT /clips/{id}/formats/{aspect like 9x16}`, `DELETE /clips/{id}` |
+| assembly | `GET/POST /projects/{id}/audio` (POST `{path}`), `GET /media/audio/{id}`, `POST /projects/{id}/collages` (`{clip_ids, title, aspect, resolution?}`) |
 | analysis | `POST /sources/{id}/analyze`, `GET /sources/{id}/analysis`, `GET /projects/{id}/analyses`, `POST /sources/{id}/analysis/cancel`, `GET /sources/{id}/transcript`, `POST /clips/{id}/replace` |
 | captions | `GET /caption-templates`, `GET/PUT /projects/{id}/caption-style`, `GET/DELETE /clips/{id}/captions`, `POST /clips/{id}/captions/edit`, `POST /sources/{id}/transcribe` |
 | ui | `POST /ui/show` `{project_id}` or `{source_id}` (emits `ui_show`) |
@@ -174,11 +186,24 @@ WebSocket events (names passed to `events.emit`, handled in `store.ts` `onEngine
 - **Auto clip:** `POST /sources/{id}/analyze` → `AnalysisManager` → transcribe (faster-whisper,
   model downloaded on first use) → scene cuts and loudness on the proxy → candidates → score by
   mode (talking / action / even) → replaces the source's *suggested* clips, emitting `clip` and `analysis`.
+  Talking favors immediate hooks, takeaway cues, contrast and sustained speech, and penalizes
+  slow openings, intros, promotions and looping speech. Text phrase cues currently cover English;
+  scores are transparent heuristics within a video, not calibrated predictions of views or virality.
 - **Framing:** `PUT /clips/{id}/formats/{aspect}`. Smart mode is tracked lazily: at export time, if
   the keyframes don't cover the clip (`keyframes_cover`).
 - **Export:** `POST /exports` creates one job per (clip × aspect) → `ExportManager._run` → builds an
   FFmpeg filter graph (`media/render.py: build_video_filter`) → `render_clip` writes `name.partial.mp4`,
   then renames it. Hardware encoders are tried first, with an automatic retry on CPU.
+- **Sequence & sound:** editor tab for ordered/repeated ranges, timed audio, and collage ordering.
+  Clip updates use the existing `clip` event. Audio start/end are output times after sections and
+  Tighten; original volume is reduced only in that audio layer's window. The desktop audio picker
+  is `window.clipping.files.pickAudio()`. Managed audio is copied into the project's `audio/` folder.
+  `media/render.py` joins ordered segments and mixes audio in the same export graph.
+- **Collage:** assembly API exports each clip at one aspect/size (30 fps; editor defaults to 720p),
+  then IngestManager joins the parts and imports the new video. `source` events report progress,
+  failure and cancellation; normal source retry/cancel works. A ready collage receives one new
+  clip and can be opened in the editor. Existing saved framing/sections/audio are rendered into it.
+  These APIs are covered by `node scripts/clip.mjs api`; no screen clicks are needed to drive them.
 
 ## Conventions
 

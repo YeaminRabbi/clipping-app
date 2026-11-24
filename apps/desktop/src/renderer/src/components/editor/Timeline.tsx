@@ -239,7 +239,9 @@ export function Timeline(props: Props) {
     <div className="border-t border-line bg-panel">
       <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted">
         <span>
-          {range
+            {clips.find((c) => c.id === selectedId)?.segments
+              ? `${clips.find((c) => c.id === selectedId)!.segments!.length} sections · source timeline`
+              : range
             ? `In ${timecode(range.start, fps)} · Out ${timecode(range.end, fps)} · ${((range.end - range.start) / 1000).toFixed(2)}s`
             : 'Press I and O to mark a range, or drag on the timeline'}
         </span>
@@ -329,25 +331,25 @@ export function Timeline(props: Props) {
             className="absolute inset-x-0 border-t border-line bg-black/20"
             style={{ top: RULER_H + THUMBS_H + WAVE_H, height: CLIPS_H }}
           >
-            {clips.map((clip) => {
+            {clips.flatMap((clip) => (clip.segments ?? [{ start_ms: clip.start_ms, end_ms: clip.end_ms }]).map((section, index) => {
               const selected = clip.id === selectedId
-              const shown = selected && range ? range : { start: clip.start_ms, end: clip.end_ms }
+              const shown = selected && range && !clip.segments ? range : { start: section.start_ms, end: section.end_ms }
               return (
                 <div
-                  key={clip.id}
-                  onPointerDown={selected ? beginMove : (e) => (e.stopPropagation(), props.onSelect(clip.id))}
+                  key={`${clip.id}-${index}`}
+                  onPointerDown={selected && !clip.segments ? beginMove : (e) => (e.stopPropagation(), props.onSelect(clip.id))}
                   onPointerMove={selected ? onMove : undefined}
                   onPointerUp={selected ? onUp : undefined}
-                  title={selected ? 'Drag to move the clip' : clip.title}
+                  title={clip.segments ? `Section ${index + 1}: edit in Sequence & sound` : selected ? 'Drag to move the clip' : clip.title}
                   className={`absolute top-1 bottom-1 truncate rounded px-1.5 text-[11px] leading-[18px] ${
                     selected ? 'z-10 cursor-grab bg-amber-400 font-medium text-black' : 'cursor-pointer bg-accent/70 text-white hover:bg-accent'
                   }`}
                   style={{ left: xFor(shown.start), width: Math.max(4, xFor(shown.end) - xFor(shown.start)) }}
                 >
-                  {clip.title}
+                  {clip.segments ? `${index + 1}. ${clip.title}` : clip.title}
                 </div>
               )
-            })}
+            }))}
             {selectedId === null && range && (
               <div
                 className="pointer-events-none absolute top-1 bottom-1 rounded border border-dashed border-amber-400 bg-amber-400/15 px-1.5 text-[11px] leading-[16px] text-amber-300"
@@ -359,7 +361,7 @@ export function Timeline(props: Props) {
           </div>
 
           {/* Range highlight + handles */}
-          {range && (
+          {range && !clips.find((c) => c.id === selectedId)?.segments && (
             <>
               <div
                 className="pointer-events-none absolute bg-amber-400/10"

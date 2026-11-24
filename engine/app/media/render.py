@@ -197,7 +197,7 @@ def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: boo
     """
     rate = Fraction(fps)
     frames = [(round(a * rate / 1000), round(b * rate / 1000)) for a, b in segments]
-    frames = [(fa, fb) for fa, fb in frames if fb > fa]
+    frames = [(fa, max(fa + 1, fb)) for fa, fb in frames]
     seek = max(0.0, float((frames[0][0] - Fraction(1, 2)) / rate))
     video_terms, audio_terms = [], []
     for fa, fb in frames:
@@ -214,6 +214,30 @@ def segment_select(segments: list[tuple[float, float]], fps: str, has_audio: boo
 
 def output_frame_count(duration: Fraction, output_fps: str) -> int:
     return max(1, round(duration * Fraction(output_fps)))
+
+
+def ordered_segments(segments, fps: str, has_audio: bool):
+    """Decode from the earliest range and concatenate ranges in the user's chosen order."""
+    rate = Fraction(fps)
+    seek, _ = trim_window(min(a for a, _ in segments), max(b for _, b in segments), fps)
+    n = len(segments)
+    graph = [f"[0:v]split={n}" + "".join(f"[vs{i}]" for i in range(n))]
+    if has_audio:
+        graph.append(f"[0:a]asplit={n}" + "".join(f"[as{i}]" for i in range(n)))
+    duration = Fraction(0)
+    for i, (a, b) in enumerate(segments):
+        fa, fb = round(a * rate / 1000), round(b * rate / 1000)
+        fa_end = max(fa + 1, fb)
+        duration += Fraction(fa_end - fa) / rate
+        va = max(0, float((fa - Fraction(1, 2)) / rate) - seek)
+        vb = float((fa_end - Fraction(1, 2)) / rate) - seek
+        graph.append(f"[vs{i}]trim=start={va:.6f}:end={vb:.6f},setpts=PTS-STARTPTS[vo{i}]")
+        if has_audio:
+            aa, ab = max(0, float(fa / rate) - seek), float(fa_end / rate) - seek
+            graph.append(f"[as{i}]atrim=start={aa:.6f}:end={ab:.6f},asetpts=PTS-STARTPTS[ao{i}]")
+    inputs = "".join(f"[vo{i}]" + (f"[ao{i}]" if has_audio else "") for i in range(n))
+    graph.append(f"{inputs}concat=n={n}:v=1:a={int(has_audio)}[vsel]" + ("[asel]" if has_audio else ""))
+    return seek, duration, ";".join(graph)
 
 
 def render_clip(
@@ -233,6 +257,7 @@ def render_clip(
     cancel: CancelToken,
     on_progress: Callable[[float], None] | None = None,
     segments: list[tuple[float, float]] | None = None,
+    audio_layers: list[dict] | None = None,
 ) -> None:
     """Render [start_ms, end_ms], or only the kept `segments` inside it, played back to back.
 
@@ -241,13 +266,35 @@ def render_clip(
     seek, duration = trim_window(start_ms, end_ms, source_fps)
     audio_map = "0:a:0?"
     input_limit: list[str] = []
-    if segments and len(segments) > 1:
-        seek, duration, select_graph = segment_select(segments, source_fps, has_audio)
+    if segments:
+        chronological = all(b <= c for (_, b), (c, _) in zip(segments, segments[1:]))
+        seek, duration, select_graph = (segment_select if chronological else ordered_segments)(segments, source_fps, has_audio)
         video_filter = select_graph + ";" + video_filter.replace("[0:v]", "[vsel]")
         audio_map = "[asel]"
         # Stop reading the source at the end of the last segment.
-        input_limit = ["-t", f"{segments[-1][1] / 1000 - seek + 0.2:.6f}"]
-    audio = ["-map", audio_map, "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio else ["-an"]
+        input_limit = ["-t", f"{max(b for _, b in segments) / 1000 - seek + 0.2:.6f}"]
+    extra_inputs = []
+    if audio_layers:
+        total = float(duration)
+        if has_audio:
+            audio_input = audio_map if audio_map.startswith("[") else "[0:a]"
+            video_filter += f";{audio_input}aresample=48000,apad,atrim=duration={total:.6f},asetpts=PTS-STARTPTS[original]"
+        else:
+            video_filter += f";anullsrc=r=48000:cl=stereo,atrim=duration={total:.6f}[original]"
+        original = "original"
+        for i, layer in enumerate(audio_layers, 1):
+            if not Path(layer["path"]).is_file():
+                raise FileNotFoundError(layer["path"])
+            extra_inputs += ["-i", layer["path"]]
+            start, end, offset = layer["start_ms"] / 1000, layer["end_ms"] / 1000, layer["offset_ms"] / 1000
+            video_filter += (f";[{i}:a]atrim=start={offset:.6f}:duration={end-start:.6f},asetpts=PTS-STARTPTS,"
+                             f"volume={layer['volume']},aresample=48000,adelay={layer['start_ms']}:all=1[layer{i}]")
+            video_filter += f";[{original}]volume={layer.get('original_volume', 1)}:enable='between(t,{start:.6f},{end:.6f})'[orig{i}]"
+            original = f"orig{i}"
+        inputs = f"[{original}]" + "".join(f"[layer{i}]" for i in range(1, len(audio_layers) + 1))
+        video_filter += f";{inputs}amix=inputs={len(audio_layers)+1}:duration=first:normalize=0,alimiter=limit=0.95:latency=1[amixed]"
+        audio_map = "[amixed]"
+    audio = ["-map", audio_map, "-c:a", "aac", "-b:a", "192k", "-ac", "2"] if has_audio or audio_layers else ["-an"]
     tmp = dest.with_name(dest.stem + ".partial" + dest.suffix)
     # The graph goes in a file: a moving crop's expression can exceed the command-line length limit.
     graph = dest.with_name(dest.stem + ".partial.graph.txt")
@@ -255,7 +302,7 @@ def render_clip(
     # An exact frame count for video: a printed duration is rounded and can let one extra frame in.
     # The duration still bounds the audio.
     args = [
-        "-ss", f"{seek:.6f}", *input_limit, "-i", str(src), "-t", f"{float(duration):.6f}",
+        "-ss", f"{seek:.6f}", *input_limit, "-i", str(src), *extra_inputs, "-t", f"{float(duration):.6f}",
         "-/filter_complex", str(graph), "-map", "[v]", "-r", output_fps,
         "-frames:v", str(output_frame_count(duration, output_fps)),
         *encoder_args(encoder, quality),

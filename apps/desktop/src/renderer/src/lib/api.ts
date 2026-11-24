@@ -148,9 +148,22 @@ export interface Clip {
   reasons: string[]
   /** Remove filler words and long pauses (null = off). */
   tighten: Tighten | null
+  segments: ClipSegment[] | null
+  audio: AudioLayer[]
   sort_order: number
   formats: Record<string, ClipFormat>
 }
+
+export interface ClipSegment { start_ms: number; end_ms: number }
+export interface AudioLayer {
+  asset_id: number
+  start_ms: number
+  end_ms: number
+  offset_ms: number
+  volume: number
+  original_volume: number
+}
+export interface AudioAsset { id: number; name: string; duration_ms: number; url: string }
 
 export type CaptionTemplate = 'bold_pop' | 'karaoke' | 'classic' | 'minimal'
 
@@ -363,8 +376,18 @@ export class EngineClient {
     return this.request(`/sources/${sourceId}/clips`, { method: 'POST', body: JSON.stringify(body) })
   }
 
-  updateClip(id: number, body: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'status' | 'tighten'>>): Promise<Clip> {
+  updateClip(id: number, body: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'status' | 'tighten' | 'segments' | 'audio'>>): Promise<Clip> {
     return this.request(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  listAudio(projectId: number): Promise<AudioAsset[]> {
+    return this.request(`/projects/${projectId}/audio`)
+  }
+  importAudio(projectId: number, path: string): Promise<AudioAsset> {
+    return this.request(`/projects/${projectId}/audio`, { method: 'POST', body: JSON.stringify({ path }) })
+  }
+  createCollage(projectId: number, clipIds: number[], title: string, aspect: string, resolution = 720): Promise<Source> {
+    return this.request(`/projects/${projectId}/collages`, { method: 'POST', body: JSON.stringify({ clip_ids: clipIds, title, aspect, resolution }) })
   }
 
   setClipFormat(

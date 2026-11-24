@@ -26,6 +26,7 @@ const bridge: ClippingBridge = {
   },
   files: {
     pickVideos: () => ipcRenderer.invoke('files:pick-videos'),
+    pickAudio: () => ipcRenderer.invoke('files:pick-audio'),
     pathFor: (file) => webUtils.getPathForFile(file),
     pickFolder: (defaultPath) => ipcRenderer.invoke('files:pick-folder', defaultPath),
     defaultExportDir: (projectName) => ipcRenderer.invoke('files:default-export-dir', projectName),

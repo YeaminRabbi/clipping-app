@@ -1,6 +1,7 @@
 """Background import of sources: download (for links), probe, poster and proxy generation."""
 
 import logging
+import json
 import shutil
 import threading
 import time
@@ -8,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from . import ffmpeg, sources
+from . import clips, ffmpeg, sources
+from .media.assembly import build_collage
 from .config import Settings
 from .db import Database
 from .events import EventHub
@@ -76,6 +78,11 @@ class IngestManager:
         if token is None:
             return False
         token.cancel()
+        with self.db.connect() as conn:
+            row = conn.execute("SELECT composition_json FROM sources WHERE id = ?", (source_id,)).fetchone()
+        if row and row["composition_json"]:
+            for job_id in json.loads(row["composition_json"])["jobs"]:
+                self.exports.cancel(job_id)
         return True
 
     def remove_files(self, path: Path) -> None:
@@ -176,6 +183,11 @@ class IngestManager:
                 raise MediaError("FFmpeg was not found. Run \"npm run bundle:ffmpeg\" and restart the engine.")
 
             process_start = 0.0
+            if row["composition_json"] and not Path(row["path"]).is_file():
+                self._update(source_id, status="processing", progress=0, error=None)
+                build_collage(self.db, self.exports, json.loads(row["composition_json"]), Path(row["path"]), tools,
+                              token, self._progress_reporter(source_id, 0, 0.8))
+                process_start = 0.8
             if row["origin"] == "url":
                 self._update(source_id, status="downloading", progress=0, error=None)
                 result = download(
@@ -231,6 +243,12 @@ class IngestManager:
             self._update(source_id, proxy_path=str(proxy))
             self._make_timeline_assets(work_dir, info.duration_ms, info.width, info.height, info.has_audio, token)
             self._update(source_id, status="ready", progress=1, error=None)
+            if row["composition_json"]:
+                with self.db.connect() as conn:
+                    clip_id = conn.execute("INSERT INTO clips (source_id, start_ms, end_ms, title, status, sort_order) VALUES (?, 0, ?, ?, 'kept', 0)",
+                                           (source_id, info.duration_ms, row["title"])).lastrowid
+                    clip = clips.get(conn, clip_id)
+                self.events.emit("clip", clip)
         except Cancelled:
             self._update(source_id, status="cancelled", error=None)
         except MediaError as err:

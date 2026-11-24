@@ -150,6 +150,16 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE clips ADD COLUMN edit_json TEXT NOT NULL DEFAULT '{}';
     """,
+    """
+    ALTER TABLE sources ADD COLUMN composition_json TEXT;
+    CREATE TABLE audio_assets (
+        id INTEGER PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL
+    );
+    """,
 ]
 
 

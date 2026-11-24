@@ -233,12 +233,13 @@ interface Props {
   onReplace(): void
   /** Contents of the Captions tab (shown for the selected clip). */
   captionsTab: ReactNode
+  sequenceTab: ReactNode
 }
 
 export function ClipPanel(props: Props) {
   const { clips, selected, range, fps, aspect, mode } = props
   const [title, setTitle] = useState(selected?.title ?? '')
-  const [tab, setTab] = useState<'frame' | 'captions'>('frame')
+  const [tab, setTab] = useState<'frame' | 'captions' | 'sequence'>('frame')
   useEffect(() => setTitle(selected?.title ?? ''), [selected?.id, selected?.title])
 
   const saveTitle = () => {
@@ -268,7 +269,7 @@ export function ClipPanel(props: Props) {
   )
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-line bg-panel">
+    <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel ${tab === 'sequence' ? 'w-96' : 'w-80'}`}>
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <h3 className="text-sm font-semibold">
           Clips <span className="font-normal text-muted">({clips.length})</span>
@@ -296,7 +297,7 @@ export function ClipPanel(props: Props) {
         <AnalysisStatus sourceId={props.sourceId} />
       </div>
 
-      <ul className="max-h-[40%] shrink-0 overflow-auto border-b border-line p-2">
+      <ul className={`${tab === 'sequence' ? 'max-h-[25%]' : 'max-h-[40%]'} shrink-0 overflow-auto border-b border-line p-2`}>
         {clips.length === 0 && (
           <li className="px-2 py-6 text-center text-xs text-muted">
             No clips yet. Click “Find clips” to pick the best moments automatically, or mark a range with <kbd>I</kbd> /{' '}
@@ -315,7 +316,7 @@ export function ClipPanel(props: Props) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{clip.title}</span>
                 <span className="text-[11px] text-muted">
-                  {timecode(clip.start_ms, fps)} · {shortDuration(clip.end_ms - clip.start_ms)}
+                  {timecode(clip.start_ms, fps)} · {shortDuration(clip.segments?.reduce((n, s) => n + s.end_ms - s.start_ms, 0) ?? clip.end_ms - clip.start_ms)}
                   {clip.status === 'suggested' && <span className="ml-1 text-accent">· suggested</span>}
                 </span>
               </span>
@@ -329,16 +330,17 @@ export function ClipPanel(props: Props) {
       </ul>
 
       <div className="flex border-b border-line px-2 text-xs">
-        {(['frame', 'captions'] as const).map((t) => (
+        {(['frame', 'captions', 'sequence'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`-mb-px border-b-2 px-3 py-2 ${tab === t ? 'border-accent text-white' : 'border-transparent text-muted hover:text-white'}`}
           >
-            {t === 'frame' ? 'Frame & clip' : 'Captions'}
+            {t === 'frame' ? 'Frame & clip' : t === 'captions' ? 'Captions' : 'Sequence & sound'}
           </button>
         ))}
       </div>
+      {tab === 'sequence' && <div className="flex-1 overflow-auto p-4">{props.sequenceTab}</div>}
       {tab === 'captions' && (
         <div className="flex-1 overflow-auto p-4">
           {selected ? props.captionsTab : <p className="text-xs text-muted">Select a clip to see and edit its captions.</p>}
@@ -415,7 +417,7 @@ export function ClipPanel(props: Props) {
               <dd className="font-mono">{timecode(range.end, fps)}</dd>
               {nudge('end')}
               <dt className="text-muted">Length</dt>
-              <dd className="font-mono">{((range.end - range.start) / 1000).toFixed(2)}s</dd>
+              <dd className="font-mono">{((props.cutPlan?.duration_ms ?? selected.segments?.reduce((n, s) => n + s.end_ms - s.start_ms, 0) ?? range.end - range.start) / 1000).toFixed(2)}s</dd>
               <span />
             </dl>
             {selected.reasons.length > 0 && (

@@ -73,7 +73,7 @@ interface AppState {
   deleteSource(id: number): Promise<void>
 
   createClip(sourceId: number, startMs: number, endMs: number): Promise<Clip | null>
-  updateClip(id: number, patch: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'tighten'>>): Promise<Clip | null>
+  updateClip(id: number, patch: Partial<Pick<Clip, 'start_ms' | 'end_ms' | 'title' | 'tighten' | 'segments' | 'audio'>>): Promise<Clip | null>
   setClipFormat(id: number, aspect: string, mode: FramingMode, crop: Crop | null, fit?: FitStyle, follow?: FollowMode): Promise<Clip | null>
   deleteClip(id: number): Promise<void>
 

@@ -22,8 +22,9 @@ from .captions.styles import font_file
 from .config import Settings
 from .db import Database
 from .edit.cutplan import TightenSettings
-from .edit.service import plan_for_clip, tighten_settings
+from .edit.service import tighten_settings
 from .edit.timemap import TimeMap
+from .edit.sequence import kept_segments
 from .events import EventHub
 from .media import CancelToken, Cancelled, MediaError
 from .media.probe import probe
@@ -97,7 +98,7 @@ def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
 
 
 def list_jobs(conn: sqlite3.Connection, project_id: int) -> list[dict[str, Any]]:
-    rows = conn.execute(_JOB_SELECT + " WHERE s.project_id = ? ORDER BY j.id DESC", (project_id,)).fetchall()
+    rows = conn.execute(_JOB_SELECT + " WHERE s.project_id = ? AND json_extract(j.preset_json, '$.collage_source_id') IS NULL ORDER BY j.id DESC", (project_id,)).fetchall()
     return [job_to_dict(r) for r in rows]
 
 
@@ -201,7 +202,8 @@ class ExportManager:
     def submit(self, job: dict[str, Any]) -> None:
         token = CancelToken()
         self.tokens[job["id"]] = token
-        self.events.emit("export", job)
+        if not job["preset"].get("collage_source_id"):
+            self.events.emit("export", job)
         self.executor.submit(self._run, job["id"], token)
 
     def cancel(self, job_id: int) -> bool:
@@ -218,7 +220,7 @@ class ExportManager:
         with self.db.connect() as conn:
             conn.execute(f"UPDATE export_jobs SET {assignments} WHERE id = ?", (*fields.values(), job_id))
             job = get_job(conn, job_id)
-        if job:
+        if job and not job["preset"].get("collage_source_id"):
             self.events.emit("export", job)
         return job
 
@@ -249,7 +251,7 @@ class ExportManager:
             row = conn.execute(
                 """SELECT j.preset_json, j.output_name, j.batch_id, j.burn_captions, j.export_srt,
                           f.id AS format_id, f.aspect, f.mode, f.crop_keyframes_json, f.options_json,
-                          c.id AS clip_id, c.start_ms, c.end_ms, s.id AS source_id, s.path, s.status AS source_status
+                          c.id AS clip_id, c.start_ms, c.end_ms, c.edit_json, s.id AS source_id, s.path, s.status AS source_status
                    FROM export_jobs j
                    JOIN clip_formats f ON f.id = j.clip_format_id
                    JOIN clips c ON c.id = f.clip_id
@@ -281,6 +283,13 @@ class ExportManager:
             output_fps = info.fps_rational if preset["fps"] == "source" else str(preset["fps"])
             # Tighten: cut filler words and long pauses, then play the kept parts back to back.
             timemap = self._cut_plan(row, preset, token)
+            audio_layers = []
+            with self.db.connect() as conn:
+                for layer in json.loads(row["edit_json"] or "{}").get("audio", []):
+                    asset = conn.execute("SELECT path FROM audio_assets WHERE id = ?", (layer["asset_id"],)).fetchone()
+                    if asset is None or not Path(asset["path"]).is_file():
+                        raise MediaError("An added audio file is missing; choose it again in Sequence & sound")
+                    audio_layers.append({**layer, "path": asset["path"]})
             keyframes = json.loads(row["crop_keyframes_json"])
             crop_px, path = None, None
             if row["mode"] == "smart":
@@ -351,6 +360,7 @@ class ExportManager:
                     cancel=token,
                     on_progress=on_progress,
                     segments=timemap.segments if timemap else None,
+                    audio_layers=audio_layers,
                 )
 
             try:
@@ -396,10 +406,10 @@ class ExportManager:
         tighten = tighten_settings(clip)
         if tighten is None and preset.get("tighten_all"):
             tighten = TightenSettings()
-        if tighten is None:
+        if tighten is None and not json.loads(clip["edit_json"] or "{}").get("segments"):
             return None
-        plan = plan_for_clip(self.settings, clip, src, tighten, token, transcribe_if_needed=True)
-        return TimeMap(plan.segments) if plan and len(plan.segments) > 1 else None
+        segments = kept_segments(self.settings, clip, src, tighten, token, transcribe=True)
+        return TimeMap(segments) if segments else None
 
     def _captions(self, row, token: CancelToken, timemap: TimeMap | None = None):
         """Cues and style for a job's clip, transcribing the source first if it never was.

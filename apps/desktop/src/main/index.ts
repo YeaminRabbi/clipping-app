@@ -70,6 +70,11 @@ function registerIpc(): void {
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
     return result.canceled ? [] : result.filePaths
   })
+  ipcMain.handle('files:pick-audio', async () => {
+    const result = await dialog.showOpenDialog({ title: 'Add audio', properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus'] }] })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
   ipcMain.handle('files:pick-folder', async (event, defaultPath?: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const options: OpenDialogOptions = {

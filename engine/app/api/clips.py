@@ -9,6 +9,7 @@ from .. import clips, exports, sources
 from ..aspects import ASPECTS
 from ..media import CancelToken
 from ..edit.service import plan_for_clip, tighten_settings
+from ..edit.sequence import kept_segments
 from ..reframe.service import track_clip
 
 router = APIRouter(tags=["clips"])
@@ -28,6 +29,20 @@ class Tighten(BaseModel):
     max_pause_ms: int = Field(default=500, ge=150, le=3000)
 
 
+class Segment(BaseModel):
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(gt=0)
+
+
+class AudioLayer(BaseModel):
+    asset_id: int
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(gt=0)
+    offset_ms: int = Field(default=0, ge=0)
+    volume: float = Field(default=1, ge=0, le=1)
+    original_volume: float = Field(default=1, ge=0, le=1)
+
+
 class ClipUpdate(BaseModel):
     start_ms: int | None = Field(default=None, ge=0)
     end_ms: int | None = Field(default=None, gt=0)
@@ -35,6 +50,8 @@ class ClipUpdate(BaseModel):
     status: Literal["suggested", "kept", "rejected"] | None = None
     # Remove filler words and long pauses. Send null to turn it off; leave it out to keep it as is.
     tighten: Tighten | None = None
+    segments: list[Segment] | None = Field(default=None, min_length=1, max_length=100)
+    audio: list[AudioLayer] | None = Field(default=None, max_length=20)
 
 
 class Crop(BaseModel):
@@ -62,7 +79,7 @@ class FormatUpdate(BaseModel):
 
 
 def _ready_source(conn, source_id: int):
-    source = conn.execute("SELECT id, status, duration_ms FROM sources WHERE id = ?", (source_id,)).fetchone()
+    source = conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
     if source is None:
         raise HTTPException(404, "Source not found")
     if source["status"] != "ready":
@@ -135,6 +152,33 @@ def update_clip(clip_id: int, body: ClipUpdate, request: Request) -> dict[str, A
         edit = json.loads(conn.execute("SELECT edit_json FROM clips WHERE id = ?", (clip_id,)).fetchone()[0] or "{}")
         if "tighten" in body.model_fields_set:
             edit["tighten"] = body.tighten.model_dump() if body.tighten else None
+        if "segments" in body.model_fields_set:
+            edit["segments"] = [s.model_dump() for s in body.segments] if body.segments else None
+        elif edit.get("segments") and (body.start_ms is not None or body.end_ms is not None):
+            raise HTTPException(422, "Edit the individual sections of this clip in Sequence & sound")
+        if edit.get("segments"):
+            for segment in edit["segments"]:
+                _check_range(segment["start_ms"], segment["end_ms"], source["duration_ms"])
+            start = min(s["start_ms"] for s in edit["segments"])
+            end = max(s["end_ms"] for s in edit["segments"])
+        if "audio" in body.model_fields_set:
+            edit["audio"] = [layer.model_dump() for layer in body.audio or []]
+        length = sum(s["end_ms"] - s["start_ms"] for s in edit.get("segments") or [{"start_ms": start, "end_ms": end}])
+        if edit.get("audio"):
+            current = {**dict(clip), "start_ms": start, "end_ms": end, "edit_json": json.dumps(edit)}
+            kept = kept_segments(request.app.state.settings, current, source, tighten_settings(current))
+            if kept is None:
+                raise HTTPException(422, "Transcribe the video before placing audio on a tightened clip")
+            length = sum(b - a for a, b in kept)
+        for layer in edit.get("audio", []):
+            asset = conn.execute("SELECT * FROM audio_assets WHERE id = ? AND project_id = (SELECT project_id FROM sources WHERE id = ?)",
+                                 (layer["asset_id"], clip["source_id"])).fetchone()
+            if asset is None:
+                raise HTTPException(422, "Choose an audio file from this project")
+            if layer["end_ms"] <= layer["start_ms"] or layer["end_ms"] > length:
+                raise HTTPException(422, "Audio sections must fit within the assembled clip")
+            if layer["offset_ms"] + layer["end_ms"] - layer["start_ms"] > asset["duration_ms"]:
+                raise HTTPException(422, "The audio section exceeds the audio file length")
         conn.execute(
             "UPDATE clips SET start_ms = ?, end_ms = ?, title = ?, status = ?, edit_json = ? WHERE id = ?",
             (start, end, title, status, json.dumps(edit), clip_id),
@@ -153,12 +197,15 @@ def cut_plan(clip_id: int, request: Request) -> dict[str, Any]:
             raise HTTPException(404, "Clip not found")
         source = conn.execute("SELECT * FROM sources WHERE id = ?", (clip["source_id"],)).fetchone()
     tighten = tighten_settings(clip)
-    if tighten is None:
-        return {"status": "off"}
-    plan = plan_for_clip(request.app.state.settings, clip, source, tighten)
-    if plan is None:
+    if not json.loads(clip["edit_json"] or "{}").get("segments"):
+        if tighten is None:
+            return {"status": "off"}
+        plan = plan_for_clip(request.app.state.settings, clip, source, tighten)
+        return {"status": "ready", **plan.to_dict(clip["end_ms"] - clip["start_ms"])} if plan else {"status": "needs_transcript"}
+    segments = kept_segments(request.app.state.settings, clip, source, tighten)
+    if segments is None:
         return {"status": "needs_transcript"}
-    return {"status": "ready", **plan.to_dict(clip["end_ms"] - clip["start_ms"])}
+    return {"status": "ready", "segments": segments, "duration_ms": sum(b - a for a, b in segments), "cuts": []}
 
 
 @router.put("/clips/{clip_id}/formats/{aspect_key}")

@@ -45,6 +45,7 @@ export interface ClippingBridge {
   files: {
     /** Show the native file picker for videos. Resolves to the chosen paths (empty if cancelled). */
     pickVideos(): Promise<string[]>
+    pickAudio(): Promise<string | null>
     /** Absolute path of a file dropped onto the window. */
     pathFor(file: File): string
     /** Native folder picker. Resolves to the chosen folder, or null if cancelled. */

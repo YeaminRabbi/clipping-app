@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__, ffmpeg
 from .analysis.manager import AnalysisManager
-from .api import analysis, captions, clips, exports, projects, sources, ui
+from .api import analysis, assembly, captions, clips, exports, projects, sources, ui
 from .config import Settings, load_settings
 from .db import Database
 from .events import EventHub
@@ -46,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.events = EventHub()
     app.state.ingest = IngestManager(settings, app.state.db, app.state.events)
     app.state.exports = ExportManager(settings, app.state.db, app.state.events)
+    app.state.ingest.exports = app.state.exports
     app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events, app.state.exports)
 
     def token_ok(supplied: str | None) -> bool:
@@ -106,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse({"detail": str(err)}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     app.include_router(projects.router)
+    app.include_router(assembly.router)
     app.include_router(sources.router)
     app.include_router(clips.router)
     app.include_router(exports.router)

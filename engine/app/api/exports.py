@@ -38,13 +38,20 @@ class ExportCreate(BaseModel):
 
 @router.post("/exports", status_code=201)
 def create_exports(body: ExportCreate, request: Request) -> list[dict[str, Any]]:
+    return enqueue_exports(body, request)
+
+
+def enqueue_exports(body: ExportCreate, request: Request, collage_source_id: int | None = None) -> list[dict[str, Any]]:
     unknown = [a for a in body.aspects if a not in ASPECTS]
     if unknown:
         raise HTTPException(422, f"Unknown aspect ratio: {', '.join(unknown)}")
     if not Path(body.preset.output_dir).is_absolute():
         raise HTTPException(422, "Choose a folder to save the videos in")
     aspects = list(dict.fromkeys(body.aspects))
-    preset_json = json.dumps(body.preset.model_dump())
+    preset = body.preset.model_dump()
+    if collage_source_id is not None:
+        preset["collage_source_id"] = collage_source_id
+    preset_json = json.dumps(preset)
     burn = body.preset.captions in ("burn", "burn_srt")
     srt = body.preset.captions in ("srt", "burn_srt")
     batch_id = uuid.uuid4().hex
@@ -146,7 +153,7 @@ def clear_finished_exports(project_id: int, request: Request) -> None:
     placeholders = ",".join("?" * len(exports.FINISHED_STATUSES))
     with request.app.state.db.connect() as conn:
         conn.execute(
-            f"""DELETE FROM export_jobs WHERE status IN ({placeholders}) AND clip_format_id IN (
+            f"""DELETE FROM export_jobs WHERE status IN ({placeholders}) AND json_extract(preset_json, '$.collage_source_id') IS NULL AND clip_format_id IN (
                   SELECT f.id FROM clip_formats f JOIN clips c ON c.id = f.clip_id
                   JOIN sources s ON s.id = c.source_id WHERE s.project_id = ?)""",
             (*exports.FINISHED_STATUSES, project_id),

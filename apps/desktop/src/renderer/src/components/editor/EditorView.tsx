@@ -19,6 +19,8 @@ import { confirmAction } from '../../lib/confirm'
 import { ClipPanel } from './ClipPanel'
 import { Stage } from './Stage'
 import { Timeline, type Range } from './Timeline'
+import { SequencePanel } from './SequencePanel'
+import { useAudioPreview } from './useAudioPreview'
 
 const DEFAULT_CLIP_MS = 15_000
 const PLAYBACK_RATES = [1, 2, 4]
@@ -111,10 +113,18 @@ export function EditorView() {
   // What Tighten removes from the selected clip; playback jumps over those parts.
   const [cutPlan, setCutPlan] = useState<CutPlan | null>(null)
   const cutsRef = useRef<{ start: number; end: number }[]>([])
+  const segmentsRef = useRef<[number, number][]>([])
+  const segmentIndex = useRef(0)
+  useEffect(() => {
+    segmentsRef.current = cutPlan?.segments ?? (selected?.segments?.map((s) => [s.start_ms, s.end_ms] as [number, number]) ??
+      (selected ? [[selected.start_ms, selected.end_ms]] : []))
+    segmentIndex.current = 0
+  }, [selected?.id, JSON.stringify(selected?.segments), selected?.start_ms, selected?.end_ms, cutPlan])
+  useAudioPreview(videoRef, selected, client, segmentsRef, segmentIndex, muted)
   useEffect(() => {
     setCutPlan(null)
     cutsRef.current = []
-    if (!client || !selected?.tighten) return
+    if (!client || !selected || (!selected.tighten && !selected.segments)) return
     let cancelled = false
     client
       .getCutPlan(selected.id)
@@ -127,7 +137,7 @@ export function EditorView() {
     return () => {
       cancelled = true
     }
-  }, [client, selected?.id, selected?.start_ms, selected?.end_ms, JSON.stringify(selected?.tighten), captionsVersion])
+  }, [client, selected?.id, selected?.start_ms, selected?.end_ms, JSON.stringify(selected?.tighten), JSON.stringify(selected?.segments), captionsVersion])
 
   const editCaption = async (cue: CaptionCue, text: string) => {
     if (!client || !selected) return
@@ -170,6 +180,16 @@ export function EditorView() {
     let handle = 0
     const onFrame: VideoFrameRequestCallback = (_now, meta) => {
       const ms = meta.mediaTime * 1000
+      const parts = segmentsRef.current
+      if (!video.paused && !video.seeking && parts.length) {
+        const part = parts[segmentIndex.current]
+        if (part && ms >= part[1] - 10) {
+          if (segmentIndex.current + 1 < parts.length) {
+            segmentIndex.current += 1
+            video.currentTime = parts[segmentIndex.current][0] / 1000
+          } else video.pause()
+        }
+      }
       // Preview the tightened clip: jump over removed fillers and pauses while playing.
       const cut = !video.paused ? cutsRef.current.find((c) => ms >= c.start && ms < c.end - 15) : undefined
       if (cut) video.currentTime = cut.end / 1000 + 0.001
@@ -177,7 +197,14 @@ export function EditorView() {
       handle = video.requestVideoFrameCallback(onFrame)
     }
     handle = video.requestVideoFrameCallback(onFrame)
-    const onPlay = () => setPlaying(true)
+    const onPlay = () => {
+      const parts = segmentsRef.current
+      const ms = video.currentTime * 1000
+      const found = parts.findIndex(([a, b]) => ms >= a && ms < b - 20)
+      segmentIndex.current = found >= 0 ? found : 0
+      if (parts.length && found < 0) video.currentTime = parts[0][0] / 1000
+      setPlaying(true)
+    }
     const onPause = () => setPlaying(false)
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
@@ -318,7 +345,7 @@ export function EditorView() {
     const clip = clips.find((c) => c.id === id)
     if (clip) {
       setDraft(null)
-      seekMs(clip.start_ms)
+      seekMs(clip.segments?.[0]?.start_ms ?? clip.start_ms)
     }
   }
 
@@ -521,6 +548,15 @@ export function EditorView() {
         </div>
 
         <ClipPanel
+          sequenceTab={<SequencePanel selected={selected} currentMs={currentMs} durationMs={durationMs} outputDurationMs={cutPlan?.duration_ms} fps={fps} aspect={aspect} onSeek={seekMs}
+            onEdit={async (patch) => {
+              if (!selected) return null
+              const before = { start_ms: selected.start_ms, end_ms: selected.end_ms, segments: selected.segments, audio: selected.audio }
+              const saved = await updateClip(selected.id, patch)
+              if (saved) pushHistory(selected.id, { undo: () => updateClip(selected.id, before), redo: () => updateClip(selected.id, patch) })
+              if (saved && patch.segments?.length) seekMs(patch.segments[0].start_ms)
+              return saved
+            }} />}
           captionsTab={
             selected && (
               <CaptionsPanel

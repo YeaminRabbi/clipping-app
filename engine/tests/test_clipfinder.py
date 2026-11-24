@@ -13,6 +13,7 @@ from app.analysis.candidates import (
 )
 from app.analysis.finder import FindSettings, find_clips, next_alternate
 from app.analysis.scoring import Signals, auto_count, score_candidates, select
+from app.analysis.engagement import text_features
 
 
 def make_words(script: list[tuple[str, int]], word_ms: int = 300, gap_ms: int = 100) -> list[dict]:
@@ -164,3 +165,66 @@ def test_next_alternate_skips_shown_and_overlapping():
     assert next_alternate(pool, taken=[(25, 26)], skip={(0, 10)}) == {"start": 5, "end": 15}
     assert next_alternate(pool, taken=[(0, 16)], skip=set()) == {"start": 20, "end": 30}
     assert next_alternate(pool, taken=[(0, 60)], skip=set()) is None
+
+
+def speech_candidate(text, lead_ms=150):
+    words = make_words([(text, 0)])
+    cand = Candidate(words[0]["start"] - lead_ms, words[-1]["end"] + 300,
+                     text=text, sentences=[text], first_word=0, last_word=len(words) - 1)
+    return cand, signals_for(words)
+
+
+def speech_score(text, lead_ms=150):
+    cand, sig = speech_candidate(text, lead_ms)
+    score_candidates([cand], sig, "talking", [])
+    return cand
+
+
+def test_immediate_hook_beats_the_same_hook_delayed_by_an_intro():
+    immediate = speech_score("The biggest mistake is chasing every customer. Instead focus on the customers who need your product.")
+    delayed = speech_score("Welcome back to the show everyone we have a lot to discuss today. The biggest mistake is chasing every customer.")
+    assert immediate.score > delayed.score
+    assert "strong opening line" in immediate.reasons
+    assert "intro before the main point" in delayed.reasons
+    assert "strong opening line" not in delayed.reasons
+
+
+def test_takeaway_and_contrast_outrank_generic_complete_sentences():
+    story = speech_score("Most people chase every customer. But that fails. The lesson is focus on the people who need your product.")
+    generic = speech_score("We spoke about the customers yesterday. We discussed several different topics and then we went back to our desks.")
+    assert story.score > generic.score
+    assert "conclusion or takeaway cue" in story.reasons
+
+
+def test_repeated_speech_and_promotions_reduce_ranking():
+    repeated = speech_score("The secret is focus. The secret is focus. The secret is focus. The secret is focus.")
+    varied = speech_score("The secret is focus. Start with one customer. Learn what they need. The lesson is solve one problem well.")
+    assert varied.score > repeated.score
+    assert "repeated speech" in repeated.reasons
+    base = "The biggest mistake is ignoring customers. The lesson is ask what they need."
+    assert speech_score(base).score > speech_score(base + " Use my code and subscribe to our channel.").score
+
+
+def test_hook_phrases_match_words_not_substrings():
+    assert text_features("A stopwatch is useful.", "A stopwatch is useful.", "")['hook'] == 0
+    assert text_features("Why does this fail?", "Why does this fail?", "")['hook'] == 1
+
+
+def test_exclamation_marks_do_not_manufacture_an_emotion_score():
+    assert speech_score("We moved the chairs into the room.").score == speech_score("We moved the chairs into the room!!!").score
+
+
+def test_dead_air_at_the_opening_reduces_ranking():
+    text = "The biggest mistake is ignoring customers. The lesson is ask what they need."
+    clean = speech_score(text)
+    slow = speech_score(text, lead_ms=1000)
+    assert clean.score > slow.score
+    assert "slow opening" in slow.reasons
+
+
+def test_flat_audio_does_not_get_loud_moment_bonus():
+    sig = Signals(words=[], loudness=np.full(100, -20.0), cuts=[], silences=[])
+    cand = Candidate(0, 10_000)
+    score_candidates([cand], sig, "action", [])
+    assert "loud moments" not in cand.reasons
+    assert cand.score < 10

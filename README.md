@@ -59,6 +59,19 @@ The packaged Windows installer bundles Python and its dependencies, so end users
 
 ## Other commands
 
+In the editor, open **Sequence & sound** to:
+
+- Save several source ranges as one clip, including rearranged or repeated sections.
+- Add an audio file to a chosen time window in the assembled clip. Set the file offset and
+  added/original sound volumes, then save. Audio files are copied into the project.
+- Append and reorder project clips under **Collage**, then create one new video and clip.
+  Choose 720p or 1080p; collages use the selected aspect ratio and 30 fps. When processing
+  finishes, choose **Open collage in editor** to continue editing or export it.
+
+Section times refer to the source video; audio placement times refer to the output after cuts.
+Use **Save sections** and **Save sound** before playback/export or creating a collage.
+The timeline shows each saved source section separately; preview plays them in sequence.
+
 | Command | What it does |
 |---|---|
 | `npm run typecheck` | Type-check main, preload and renderer |
