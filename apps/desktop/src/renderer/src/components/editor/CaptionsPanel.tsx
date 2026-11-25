@@ -103,7 +103,7 @@ export function CaptionsPanel(props: Props) {
               <button
                 key={key}
                 onClick={() => void setCaptionStyle(key, {})}
-                className={`flex h-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-md border bg-black/50 px-1 ${selected ? 'border-accent' : 'border-line hover:border-white/30'}`}
+                className={`not-pill flex h-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border bg-black/50 px-1 ${selected ? 'border-accent' : 'border-line hover:border-white/30'}`}
               >
                 <span className="truncate" style={captionTextStyle({ ...t, size: t.size }, 300)}>
                   {TEMPLATE_INFO[key].sample.split(' ').map((w, i) => (
@@ -219,7 +219,7 @@ export function CaptionsPanel(props: Props) {
               <button
                 onClick={() => void transcribe(sourceId, model, null)}
                 disabled={transcribing}
-                className="flex-1 rounded-md bg-accent px-3 py-1.5 font-medium hover:bg-accent-hover disabled:opacity-50"
+                className="flex-1 rounded-md bg-accent text-on-accent px-3 py-1.5 font-medium hover:bg-accent-hover disabled:opacity-50"
               >
                 {transcribing ? 'Transcribing' : 'Transcribe speech'}
               </button>

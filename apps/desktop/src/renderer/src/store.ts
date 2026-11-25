@@ -18,7 +18,8 @@ import {
   type FramingMode,
   type Health,
   type Project,
-  type Source
+  type Source,
+  ACTIVE_STATUSES
 } from './lib/api'
 
 interface AppState {
@@ -53,12 +54,20 @@ interface AppState {
   clipDeletions: Record<number, number>
   /** Source (and optional marked range) for the auto-clip dialog; null when it's closed. */
   autoClipDialog: { sourceId: number; range: { start: number; end: number } | null } | null
+  /**
+   * Videos still importing that should get Find clips as soon as they're ready, with the settings
+   * to use. Kept for this session only: after a restart, start Find clips from the video's row.
+   */
+  autoClipOnReady: Record<number, AnalyzeParams>
+  /** The Settings screen is showing (replaces the home / project / editor view). */
+  settingsOpen: boolean
 
   init(): () => void
   restartEngine(): Promise<void>
   refresh(): Promise<void>
   setError(message: string | null): void
-  createProject(name: string): Promise<void>
+  /** Resolves to the new project, or null if it couldn't be created. */
+  createProject(name: string): Promise<Project | null>
   deleteProject(id: number): Promise<void>
 
   openProject(id: number): Promise<void>
@@ -67,7 +76,13 @@ interface AppState {
   closeEditor(): void
 
   addUrl(url: string): Promise<boolean>
-  addFiles(paths: string[]): Promise<void>
+  /** Adds videos to the open project; resolves to the sources that were added. */
+  addFiles(paths: string[]): Promise<Source[]>
+  /** Find clips with these settings once the video finishes importing (null turns it off). */
+  setAutoClipOnReady(sourceId: number, params: AnalyzeParams | null): void
+  openSettings(): void
+  /** Back to the projects home: closes Settings, the editor and any open project. */
+  goHome(): void
   cancelSource(id: number): Promise<void>
   retrySource(id: number): Promise<void>
   deleteSource(id: number): Promise<void>
@@ -126,6 +141,7 @@ export const useApp = create<AppState>((set, get) => {
     if (event === 'source') {
       const source = data as Source
       if (source.project_id === openProjectId) set({ sources: upsert(get().sources, source) })
+      autoClipIfReady(source)
     } else if (event === 'clip') {
       const clip = data as Clip
       if (inOpenProject(clip.source_id)) set({ clips: upsert(get().clips, clip, false).sort(byStart) })
@@ -176,6 +192,17 @@ export const useApp = create<AppState>((set, get) => {
     unsubscribeEvents = client ? client.subscribe(onEngineEvent, () => void get().refresh()) : null
     set({ engine, client, ...(client ? {} : { health: null }), ...(reconnected ? { error: null } : {}) })
     if (client) void get().refresh()
+  }
+
+  /** Starts a queued "find clips when ready" run once its video has imported (or drops it if the import failed). */
+  const autoClipIfReady = (source: Source): void => {
+    const pending = get().autoClipOnReady
+    const params = pending[source.id]
+    if (!params || ACTIVE_STATUSES.includes(source.status)) return
+    const rest = { ...pending }
+    delete rest[source.id]
+    set({ autoClipOnReady: rest })
+    if (source.status === 'ready') void get().analyze(source.id, params)
   }
 
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -230,6 +257,8 @@ export const useApp = create<AppState>((set, get) => {
     captionStyle: null,
     captionsVersion: 0,
     autoClipDialog: null,
+    autoClipOnReady: {},
+    settingsOpen: false,
     clipDeletions: {},
 
     init() {
@@ -257,12 +286,12 @@ export const useApp = create<AppState>((set, get) => {
 
     setError: (message) => set({ error: message }),
 
-    createProject: async (name) => {
-      await run(async (client) => {
+    createProject: (name) =>
+      run(async (client) => {
         const project = await client.createProject(name)
         set({ projects: [project, ...get().projects] })
-      })
-    },
+        return project
+      }),
 
     deleteProject: async (id) => {
       await run(async (client) => {
@@ -272,7 +301,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     openProject: async (id) => {
-      set({ openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
+      set({ settingsOpen: false, openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
       await run(loadProjectData)
     },
 
@@ -304,6 +333,7 @@ export const useApp = create<AppState>((set, get) => {
       })) ?? false,
 
     addFiles: async (paths) => {
+      const added: Source[] = []
       await run(async (client) => {
         const id = get().openProjectId
         if (id === null) return
@@ -311,13 +341,33 @@ export const useApp = create<AppState>((set, get) => {
         // One at a time so each file gets its own error instead of failing the whole batch.
         for (const path of paths) {
           try {
-            set({ sources: upsert(get().sources, await client.addSource(id, { path })) })
+            const source = await client.addSource(id, { path })
+            added.push(source)
+            set({ sources: upsert(get().sources, source) })
           } catch (err) {
             failures.push(errorMessage(err))
           }
         }
         if (failures.length) throw new Error(failures.join(' · '))
       })
+      return added
+    },
+
+    setAutoClipOnReady: (sourceId, params) => {
+      const rest = { ...get().autoClipOnReady }
+      if (params) rest[sourceId] = params
+      else delete rest[sourceId]
+      set({ autoClipOnReady: rest })
+      // The video may already have finished importing.
+      const source = get().sources.find((s) => s.id === sourceId)
+      if (params && source) autoClipIfReady(source)
+    },
+
+    openSettings: () => set({ settingsOpen: true, exportDialog: null, autoClipDialog: null }),
+
+    goHome: () => {
+      set({ settingsOpen: false })
+      if (get().openProjectId !== null) get().closeProject()
     },
 
     cancelSource: async (id) => {

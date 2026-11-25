@@ -34,8 +34,8 @@ export function ConfirmDialogHost() {
           <button
             data-autofocus={!pending.danger || undefined}
             onClick={() => answer(true)}
-            className={`rounded-md px-4 py-2 text-sm font-medium text-white ${
-              pending.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-accent hover:bg-accent-hover'
+            className={`rounded-md px-4 py-2 text-sm font-medium ${
+              pending.danger ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-accent text-on-accent hover:bg-accent-hover'
             }`}
           >
             {pending.confirmLabel ?? 'Confirm'}

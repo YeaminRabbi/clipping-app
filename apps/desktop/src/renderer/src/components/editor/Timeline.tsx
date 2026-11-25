@@ -340,7 +340,7 @@ export function Timeline(props: Props) {
                   onPointerUp={selected ? onUp : undefined}
                   title={selected ? 'Drag to move the clip' : clip.title}
                   className={`absolute top-1 bottom-1 truncate rounded px-1.5 text-[11px] leading-[18px] ${
-                    selected ? 'z-10 cursor-grab bg-amber-400 font-medium text-black' : 'cursor-pointer bg-accent/70 text-white hover:bg-accent'
+                    selected ? 'z-10 cursor-grab bg-amber-400 font-medium text-black' : 'cursor-pointer bg-accent-muted text-white hover:bg-[#4d6fae]'
                   }`}
                   style={{ left: xFor(shown.start), width: Math.max(4, xFor(shown.end) - xFor(shown.start)) }}
                 >

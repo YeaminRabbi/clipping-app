@@ -1,0 +1,61 @@
+/* Clipping App redesign: design tokens (dark navy glass) */
+:root {
+  --bg: #0a1120;
+  --ambient-1: #23416f;
+  --ambient-2: #1a2f55;
+  --video-bg: #060a14;
+
+  --glass: rgba(58, 82, 130, 0.20);
+  --glass-strong: rgba(26, 40, 70, 0.72);
+  --glass-header: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 20px 50px rgba(2, 6, 16, 0.45);
+  --glass-blur: blur(24px) saturate(140%); /* sidebar + dialogs ONLY */
+  --divider: rgba(160, 180, 220, 0.18);
+  --divider-strong: rgba(160, 180, 220, 0.35);
+
+  --text: #eef2fb;
+  --text-soft: #c8d1e4;
+  --text-muted: #9aa7c2;
+  --text-faint: #8794b0;
+
+  --primary: #f1f4fa;
+  --primary-fg: #0a1120;
+  --outline: rgba(255, 255, 255, 0.22);
+  --hover: rgba(255, 255, 255, 0.10);
+  --active: rgba(255, 255, 255, 0.12);
+
+  --success: #4ade80;
+  --success-soft: #86efac;
+  --warning: #fcd34d;
+  --danger: #e5484d;
+  --danger-soft: #fca5a5;
+  --facecam: #9cc2ff;
+
+  --radius-pill: 999px;
+  --radius-panel: 22px;
+  --radius-dialog: 24px;
+  --radius-card: 14px;
+
+  --font: "Inter", system-ui, sans-serif;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 16px;
+  --text-title: 24px;
+
+  --sidebar-width: 68px;
+  --sidebar-inset: 14px;
+  --content-left: 96px;
+}
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+.glass-float {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}

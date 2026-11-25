@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#0a1120}
+a{color:#eef2fb;text-decoration:none}
+input::placeholder{color:#8794b0}
+.glass{background:rgba(58,82,130,0.20);border:1px solid rgba(255,255,255,0.08);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 20px 50px rgba(2,6,16,0.45)}
+.float{backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%)}
+.pill{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:0;background:#f1f4fa;color:#0a1120;font:inherit;font-weight:600;cursor:pointer}
+.pill:hover{background:#ffffff}
+.pill2{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:transparent;color:#e6ebf5;font:inherit;cursor:pointer}
+.pill2:hover{background:rgba(255,255,255,0.10)}
+.nav{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#aeb9d1}
+.nav:hover{background:rgba(255,255,255,0.10);color:#fff}
+</style>
+</helmet>
+<div style="position: relative; min-height: 800px; overflow: hidden; background: #0a1120; color: #eef2fb; font-family: Inter, system-ui, sans-serif; font-size: 12px">
+  <div aria-hidden="true" style="position: absolute; left: 30%; top: -260px; width: 760px; height: 520px; border-radius: 50%; background: #23416f; opacity: 0.5; filter: blur(140px)"></div>
+  <nav aria-label="Main" class="glass float" style="z-index: 2; position: absolute; left: 14px; top: 14px; bottom: 14px; width: 68px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 8px; box-sizing: border-box">
+    <div style="width: 42px; height: 42px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center; margin-bottom: 12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg>
+    </div>
+    <a href="Main.dc.html" aria-label="Home" class="nav" style="background: rgba(255,255,255,0.12); color: #fff">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></a>
+    <span style="flex: 1"></span>
+    <a href="Settings.dc.html" aria-label="Engine ready, open system check" class="nav"><span style="width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80"></span></a>
+    <a href="Settings.dc.html" aria-label="Settings" class="nav"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></a>
+  </nav>
+
+  <div style="position: relative; margin-left: 96px; padding: 14px 14px 14px 0; display: flex; flex-direction: column; gap: 10px; min-height: 800px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <a href="Project.dc.html" aria-label="Back to project" class="nav" style="width: 38px; height: 38px; border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+        <div><div style="font-size: 11px; color: #9aa7c2">Ranked nights</div><div style="font-weight: 600; font-size: 13px">ranked-night-2026-11-20.mkv</div></div>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <span class="pill2" style="height: 38px">Shortcuts</span>
+        <button onClick="{{openExport}}" class="pill" style="height: 38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14"></path></svg>Export clips</button>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 10px">
+      <section style="flex: 1; min-width: 0; border-radius: 20px; overflow: hidden; background: #060a14; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column">
+        <div style="height: 380px; display: flex; align-items: center; justify-content: center">
+          <sc-if value="{{isEdit}}" hint-placeholder-val="{{ true }}">
+            <div style="position: relative; width: 600px; max-width: 96%; aspect-ratio: 16 / 9; background: #18233b; border-radius: 6px">
+              <span style="position: absolute; left: 12px; bottom: 10px; color: #6f7d99">Gameplay · {{cur.at}}</span>
+              <div style="position: absolute; left: 34%; top: 0; width: 31.6%; height: 100%; border: 1.5px dashed #f1f4fa; box-sizing: border-box; background: rgba(241,244,250,0.06)"></div>
+              <sc-if value="{{camOn}}" hint-placeholder-val="{{ true }}">
+                <div style="position: absolute; left: 2%; top: 4%; width: 23%; height: 26%; border: 1.5px dashed #9cc2ff; border-radius: 6px; box-sizing: border-box; background: rgba(80,130,220,0.18)">
+                  <span style="position: absolute; left: 5px; top: 5px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #f1f4fa; color: #0a1120">Facecam</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{isOutput}}" hint-placeholder-val="{{ false }}">
+            <div style="height: 350px; aspect-ratio: 9 / 16; display: flex; flex-direction: column; background: #18233b; border-radius: 12px; overflow: hidden">
+              <sc-if value="{{camOn}}" hint-placeholder-val="{{ true }}"><div style="height: 36%; background: #233a63; display: flex; align-items: center; justify-content: center; color: #cfe0ff">Facecam</div></sc-if>
+              <div style="flex: 1; display: flex; align-items: center; justify-content: center; color: #6f7d99">Gameplay</div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.06); background: rgba(58,82,130,0.14)">
+          <span aria-label="Play" style="width: 34px; height: 34px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center"><svg width="13" height="13" viewBox="0 0 24 24" fill="#0a1120" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg></span>
+          <span style="font-variant-numeric: tabular-nums; font-weight: 600">{{cur.inT}}</span><span style="color: #9aa7c2">/ 3:58:12</span>
+          <span style="flex: 1"></span>
+          <span class="pill2" style="height: 30px; padding: 0 12px">Mark In</span>
+          <span class="pill2" style="height: 30px; padding: 0 12px">Mark Out</span>
+          <div role="radiogroup" aria-label="View" style="display: flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,0.07)">
+            <button onClick="{{showEdit}}" role="radio" aria-checked="{{isEdit}}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: {{editBg}}; color: {{editFg}}; font: inherit; font-weight: 500; cursor: pointer">Edit framing</button>
+            <button onClick="{{showOutput}}" role="radio" aria-checked="{{isOutput}}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: {{outBg}}; color: {{outFg}}; font: inherit; font-weight: 500; cursor: pointer">Preview output</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="glass" style="width: 330px; flex: none; border-radius: 20px; display: flex; flex-direction: column; overflow: hidden; height: 426px">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(255,255,255,0.05)">
+          <span style="font-weight: 600; font-size: 13px">Clips <span style="color: #9aa7c2; font-weight: 400">({{total}})</span></span>
+          <div style="display: flex; gap: 6px"><span class="pill2" style="height: 30px; padding: 0 12px">Find clips</span><span class="pill" style="height: 30px; padding: 0 12px">+ New</span></div>
+        </div>
+        <div style="height: 150px; overflow-y: auto; padding: 4px 6px">
+          <sc-for list="{{cands}}" as="c" hint-placeholder-count="4">
+            <button onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="width: 100%; display: flex; gap: 10px; align-items: center; padding: 7px 8px; border: 0; border-radius: 12px; background: {{c.bg}}; color: #eef2fb; font: inherit; text-align: left; cursor: pointer">
+              <span style="width: 22px; height: 22px; flex: none; border-radius: 50%; background: {{c.numBg}}; color: {{c.numFg}}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">{{c.n}}</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.quote}}</span>
+                <span style="font-size: 11px; color: #9aa7c2">{{c.at}} · {{c.len}} · {{c.sig}}</span>
+              </span>
+              <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: {{c.scoreBg}}; color: {{c.scoreFg}}">{{c.score}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div role="tablist" style="display: flex; gap: 4px; margin: 6px 10px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,0.07)">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+            <button role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="flex: 1; height: 28px; border: 0; border-radius: 999px; background: {{t.bg}}; color: {{t.fg}}; font: inherit; font-weight: 500; cursor: pointer">{{t.label}}</button>
+          </sc-for>
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding: 6px 12px 12px; display: flex; flex-direction: column; gap: 9px">
+          <sc-if value="{{tFrame}}" hint-placeholder-val="{{ true }}">
+            <span style="font-size: 11px; color: #9aa7c2">Frame</span>
+            <div role="radiogroup" aria-label="Aspect ratio" style="display: flex; gap: 5px">
+              <sc-for list="{{ratios}}" as="r" hint-placeholder-count="5">
+                <button onClick="{{r.pick}}" role="radio" aria-checked="{{r.on}}" style="flex: 1; height: 32px; border-radius: 999px; border: 1px solid {{r.border}}; background: {{r.bg}}; color: {{r.fg}}; font: inherit; font-weight: 500; cursor: pointer">{{r.label}}</button>
+              </sc-for>
+            </div>
+            <span style="font-size: 11px; color: #9aa7c2; margin-top: 2px">Facecam</span>
+            <button onClick="{{toggleCam}}" role="switch" aria-checked="{{camOn}}" style="display: flex; justify-content: space-between; align-items: center; min-height: 42px; padding: 0 6px 0 14px; border: 1px dashed rgba(160,180,220,0.35); border-radius: 999px; background: transparent; color: #eef2fb; font: inherit; cursor: pointer">
+              <span>{{camText}}</span>
+              <span style="width: 40px; height: 24px; border-radius: 999px; background: {{camTrack}}; position: relative"><span style="position: absolute; top: 3px; left: {{camKnob}}; width: 18px; height: 18px; border-radius: 50%; background: {{camKnobBg}}"></span></span>
+            </button>
+            <span style="color: #9aa7c2; line-height: 1.5">Preset “Main layout”. Drag the box on the preview to adjust it.</span>
+          </sc-if>
+          <sc-if value="{{tCaptions}}" hint-placeholder-val="{{ false }}">
+            <span style="color: #9aa7c2; line-height: 1.5">Caption styling stays as it is today. Word timing now comes from the transcript, so edits land on the right words.</span>
+          </sc-if>
+          <sc-if value="{{tTranscript}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; justify-content: space-between; color: #9aa7c2"><span>Word timing · English</span><span style="color: #fcd34d">2 unsure words</span></div>
+            <sc-for list="{{lines}}" as="l" hint-placeholder-count="5">
+              <div style="display: flex; gap: 8px; line-height: 1.5">
+                <span style="width: 40px; flex: none; color: #8794b0; font-variant-numeric: tabular-nums">{{l.t}}</span>
+                <span>{{l.a}}<span style="text-decoration: underline wavy #fcd34d; text-underline-offset: 3px">{{l.low}}</span>{{l.b}}</span>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{tThumb}}" hint-placeholder-val="{{ false }}">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+              <sc-for list="{{thumbs}}" as="f" hint-placeholder-count="4">
+                <button onClick="{{f.pick}}" aria-pressed="{{f.on}}" style="padding: 4px; border-radius: 12px; border: 1.5px solid {{f.border}}; background: rgba(255,255,255,0.04); color: #eef2fb; font: inherit; cursor: pointer; text-align: left">
+                  <span style="display: block; aspect-ratio: 16 / 9; border-radius: 8px; background: #18233b; position: relative"><span style="position: absolute; left: 4px; top: 4px; width: 22%; height: 26%; border-radius: 3px; background: #233a63"></span></span>
+                  <span style="display: flex; justify-content: space-between; padding: 4px 2px 0; font-size: 10px"><span style="color: #c8d1e4">{{f.why}}</span><b>{{f.score}}</b></span>
+                </button>
+              </sc-for>
+            </div>
+            <span style="color: #9aa7c2">Also exported as a 1080×1920 vertical thumbnail, no text.</span>
+          </sc-if>
+        </div>
+      </aside>
+    </div>
+
+    <section style="border-radius: 20px; background: rgba(6,10,20,0.85); border: 1px solid rgba(255,255,255,0.08); padding: 10px 12px 12px">
+      <div style="display: flex; justify-content: space-between; color: #9aa7c2; margin-bottom: 8px"><span>Press I and O to mark a range, or drag on the timeline</span><span>Zoom − · Fit · +</span></div>
+      <div style="display: flex; gap: 2px; height: 30px">
+        <sc-for list="{{strip}}" as="s" hint-placeholder-count="20"><span style="flex: 1; border-radius: 4px; background: {{s.c}}"></span></sc-for>
+      </div>
+      <div style="display: flex; align-items: center; gap: 1px; height: 30px; margin-top: 4px">
+        <sc-for list="{{wave}}" as="w" hint-placeholder-count="60"><span style="flex: 1; height: {{w.h}}; background: #6f8fcf; border-radius: 1px"></span></sc-for>
+      </div>
+      <div style="position: relative; height: 24px; margin-top: 6px">
+        <sc-for list="{{cands}}" as="c" hint-placeholder-count="8">
+          <button onClick="{{c.pick}}" aria-label="Select part {{c.n}}" style="position: absolute; left: {{c.x}}; width: 6.5%; height: 22px; border: 0; border-radius: 999px; background: {{c.bar}}; color: {{c.barFg}}; font: inherit; font-size: 10px; font-weight: 600; cursor: pointer">Part {{c.n}}</button>
+        </sc-for>
+      </div>
+    </section>
+  </div>
+
+  <sc-if value="{{exOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(4,8,18,0.55); display: flex; align-items: center; justify-content: center; z-index: 3">
+      <div role="dialog" aria-label="Export clips" class="glass float" style="width: 520px; max-width: calc(100% - 40px); border-radius: 24px; background: rgba(26,40,70,0.72); overflow: hidden; font-size: 13px">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,0.05)">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 600">Export {{total}} clips</h2>
+          <button onClick="{{closeExport}}" aria-label="Close" style="width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,0.08); color: #c8d1e4; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <sc-if value="{{exSetup}}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+            <sc-for list="{{formats}}" as="f" hint-placeholder-count="2">
+              <button onClick="{{f.pick}}" role="radio" aria-checked="{{f.on}}" style="display: flex; gap: 12px; padding: 14px; border-radius: 16px; border: 1px {{f.style}} {{f.border}}; background: rgba(255,255,255,0.04); color: #eef2fb; font: inherit; text-align: left; cursor: pointer">
+                <span style="width: 20px; height: 20px; flex: none; border-radius: 50%; border: 1.5px solid {{f.border}}; display: flex; align-items: center; justify-content: center"><span style="width: 10px; height: 10px; border-radius: 50%; background: {{f.dot}}"></span></span>
+                <span style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600">{{f.title}}</span><span style="font-size: 12px; color: #9aa7c2; line-height: 1.45">{{f.sub}}</span></span>
+              </button>
+            </sc-for>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; border-radius: 999px; background: rgba(6,12,26,0.45)"><span style="color: #9aa7c2">Save to</span><span>F:\Shorts\ranked-night-2026-11-20\</span></div>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px dashed rgba(160,180,220,0.25)">
+            <button onClick="{{closeExport}}" class="pill2">Cancel</button>
+            <button onClick="{{runExport}}" class="pill">Export</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{exRunning}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 20px 18px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; justify-content: space-between"><span>Exporting part {{exPart}} of {{total}}</span><span style="color: #9aa7c2">{{exPct}}%</span></div>
+            <div role="progressbar" aria-label="Export progress" style="height: 3px; border-radius: 2px; background: rgba(255,255,255,0.12)"><div style="height: 3px; width: {{exW}}; border-radius: 2px; background: #f1f4fa"></div></div>
+            <span style="color: #9aa7c2; font-size: 12px">Using the NVIDIA encoder, one clip at a time.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{exDone}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+            <span style="display: flex; align-items: center; gap: 8px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 50%; background: #f1f4fa; color: #0a1120; display: flex; align-items: center; justify-content: center; font-size: 12px">✓</span>{{total}} packages exported</span>
+            <div style="padding: 12px 14px; border-radius: 14px; border: 1px dashed rgba(160,180,220,0.35); font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.7; white-space: pre; color: #c8d1e4">{{tree}}</div>
+            <span style="color: #9aa7c2; font-size: 12px; line-height: 1.5">Send a part folder to Claude for the hook-first edit, captions, title and hashtags.</span>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px dashed rgba(160,180,220,0.25)">
+            <button onClick="{{closeExport}}" class="pill2">Close</button>
+            <span class="pill">Open folder</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 0, tab: 'frame', ratio: '9:16', cam: true, view: 'edit', thumb: 0, ex: 'closed', fmt: 'pkg', exPct: 0 };
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    const st = this.state;
+    const W = '#f1f4fa', N = '#0a1120';
+    const data = [
+      ['“No way, no WAY he hit that”', '0:42:10', '55 s', 92, 'Shout', '0:41:55'],
+      ['“Okay chat, watch this”', '1:07:44', '48 s', 88, 'Keyword', '1:07:29'],
+      ['Laughter after round loss', '1:31:02', '41 s', 84, 'Laugh', '1:30:47'],
+      ['“Let’s GO, one-tap”', '2:02:18', '37 s', 81, 'Shout', '2:02:03'],
+      ['Clutch 1v3', '2:26:51', '58 s', 77, 'Shout', '2:26:36'],
+      ['“Why is he just standing there”', '2:58:09', '33 s', 72, 'Keyword', '2:57:54'],
+      ['Desk slam', '3:20:40', '44 s', 69, 'Loud', '3:20:25'],
+      ['“I told you, I TOLD you”', '3:44:12', '39 s', 64, 'Shout', '3:43:57']
+    ];
+    const xs = ['9%', '20%', '31%', '43%', '54%', '66%', '78%', '90%'];
+    const cands = data.map((d, i) => {
+      const on = st.sel === i;
+      return { n: i + 1, quote: d[0], at: d[1], len: d[2], score: d[3], sig: d[4], inT: d[5], x: xs[i], on: on,
+        bg: on ? 'rgba(255,255,255,0.10)' : 'transparent', numBg: on ? W : 'rgba(255,255,255,0.10)', numFg: on ? N : '#c8d1e4',
+        scoreBg: d[3] >= 80 ? W : 'rgba(255,255,255,0.10)', scoreFg: d[3] >= 80 ? N : '#dfe6f5',
+        bar: on ? W : 'rgba(150,175,225,0.28)', barFg: on ? N : '#dfe6f5',
+        pick: () => this.setState({ sel: i, thumb: 0 }) };
+    });
+    const seg = (on) => ({ bg: on ? W : 'transparent', fg: on ? N : '#c8d1e4' });
+    const tabs = [['frame', 'Frame'], ['captions', 'Captions'], ['transcript', 'Transcript'], ['thumb', 'Thumbnail']].map((t) => Object.assign({ label: t[1], on: st.tab === t[0], pick: () => this.setState({ tab: t[0] }) }, seg(st.tab === t[0])));
+    const ratios = ['9:16', '4:5', '1:1', '16:9', '4:3'].map((r) => ({ label: r, on: st.ratio === r, bg: st.ratio === r ? W : 'transparent', fg: st.ratio === r ? N : '#e6ebf5', border: st.ratio === r ? W : 'rgba(255,255,255,0.2)', pick: () => this.setState({ ratio: r }) }));
+    const thumbs = [['At peak · face', 94], ['Sharp · face', 89], ['Build-up', 81], ['Reaction', 78]].map((f, i) => ({ why: f[0], score: f[1], on: st.thumb === i, border: st.thumb === i ? W : 'rgba(255,255,255,0.08)', pick: () => this.setState({ thumb: i }) }));
+    const formats = [
+      ['pkg', 'Shorts package', 'One folder per clip: clip.mp4 (landscape 1080p), transcript.srt, words.json, thumbs/ and meta.json with the facecam box.'],
+      ['video', 'Video files only', 'Rendered clips with the framing and captions set here, like today.']
+    ].map((f) => ({ title: f[1], sub: f[2], on: st.fmt === f[0], border: st.fmt === f[0] ? W : 'rgba(255,255,255,0.14)', style: st.fmt === f[0] ? 'solid' : 'dashed', dot: st.fmt === f[0] ? W : 'transparent', pick: () => this.setState({ fmt: f[0] }) }));
+    const strip = []; for (let i = 0; i < 20; i++) strip.push({ c: ['#1b2a48', '#22355a', '#18253f', '#2a4170'][i % 4] });
+    const wave = []; for (let i = 0; i < 90; i++) { const h = 18 + Math.round(72 * Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.23))); wave.push({ h: h + '%' }); }
+    const total = data.length;
+    const ev = seg(st.view === 'edit'), ov = seg(st.view === 'output');
+    return {
+      cands: cands, cur: cands[st.sel], total: total, tabs: tabs, ratios: ratios, thumbs: thumbs, formats: formats, strip: strip, wave: wave,
+      tFrame: st.tab === 'frame', tCaptions: st.tab === 'captions', tTranscript: st.tab === 'transcript', tThumb: st.tab === 'thumb',
+      isEdit: st.view === 'edit', isOutput: st.view === 'output', editBg: ev.bg, editFg: ev.fg, outBg: ov.bg, outFg: ov.fg,
+      showEdit: () => this.setState({ view: 'edit' }), showOutput: () => this.setState({ view: 'output' }),
+      camOn: st.cam, camText: st.cam ? 'Facecam box on · top-left' : 'No facecam for this clip',
+      camTrack: st.cam ? W : 'rgba(255,255,255,0.14)', camKnob: st.cam ? '19px' : '3px', camKnobBg: st.cam ? N : '#c8d1e4',
+      toggleCam: () => this.setState({ cam: !st.cam }),
+      lines: [
+        { t: '0:00.0', a: 'okay he’s pushing B, I’m holding this', low: '', b: '' },
+        { t: '0:06.4', a: 'one’s low, one’s low, ', low: 'sixty', b: ' on him' },
+        { t: '0:12.1', a: 'wait wait wait—', low: '', b: '' },
+        { t: '0:15.2', a: 'NO WAY. No way he hit that', low: '', b: '' },
+        { t: '0:19.8', a: 'chat did you see that, through the ', low: 'smoke', b: '' }
+      ],
+      exOpen: st.ex !== 'closed', exSetup: st.ex === 'setup', exRunning: st.ex === 'running', exDone: st.ex === 'done',
+      exPct: st.exPct, exW: st.exPct + '%', exPart: Math.min(total, 1 + Math.floor(st.exPct / (100 / total))),
+      tree: 'F:\\Shorts\\ranked-night-2026-11-20\\\n  part-01\\  clip.mp4  transcript.srt  words.json\n            meta.json  thumbs\\ (4 + vertical)\n  part-02\\  …\n  … part-08\\',
+      openExport: () => this.setState({ ex: 'setup' }),
+      closeExport: () => { clearInterval(this.timer); this.setState({ ex: 'closed', exPct: 0 }); },
+      runExport: () => {
+        this.setState({ ex: 'running', exPct: 0 });
+        clearInterval(this.timer);
+        this.timer = setInterval(() => {
+          const p = Math.min(100, this.state.exPct + 3);
+          if (p >= 100) { clearInterval(this.timer); this.setState({ ex: 'done', exPct: 100 }); }
+          else this.setState({ exPct: p });
+        }, 90);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

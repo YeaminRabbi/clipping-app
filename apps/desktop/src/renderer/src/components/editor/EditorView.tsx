@@ -439,7 +439,7 @@ export function EditorView() {
         <button
           onClick={() => openExportDialog(clips.map((c) => c.id))}
           disabled={clips.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
         >
           <Download size={14} aria-hidden />
           Export clips

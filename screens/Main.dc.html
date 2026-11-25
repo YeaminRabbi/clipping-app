@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home: projects</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#0a1120}
+a{color:#eef2fb;text-decoration:none}
+input::placeholder{color:#8794b0}
+.glass{background:rgba(58,82,130,0.20);border:1px solid rgba(255,255,255,0.08);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 20px 50px rgba(2,6,16,0.45)}
+.float{backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%)}
+.pill{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:0;background:#f1f4fa;color:#0a1120;font:inherit;font-weight:600;cursor:pointer}
+.pill:hover{background:#ffffff}
+.pill2{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:transparent;color:#e6ebf5;font:inherit;cursor:pointer}
+.pill2:hover{background:rgba(255,255,255,0.10)}
+.nav{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#aeb9d1}
+.nav:hover{background:rgba(255,255,255,0.10);color:#fff}
+</style>
+</helmet>
+<div style="position: relative; min-height: 800px; overflow: hidden; background: #0a1120; color: #eef2fb; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <div aria-hidden="true" style="position: absolute; left: 10%; top: -220px; width: 760px; height: 520px; border-radius: 50%; background: #23416f; opacity: 0.55; filter: blur(140px)"></div>
+  <div aria-hidden="true" style="position: absolute; right: -160px; bottom: -220px; width: 620px; height: 560px; border-radius: 50%; background: #1a2f55; opacity: 0.7; filter: blur(140px)"></div>
+
+  <nav aria-label="Main" class="glass float" style="position: absolute; left: 14px; top: 14px; bottom: 14px; width: 68px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 8px; box-sizing: border-box">
+    <div style="width: 42px; height: 42px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center; margin-bottom: 12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg>
+    </div>
+    <a href="Main.dc.html" aria-label="Home" class="nav" style="background: rgba(255,255,255,0.12); color: #fff">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></a>
+    <span style="flex: 1"></span>
+    <a href="Settings.dc.html" aria-label="Engine ready, open system check" class="nav"><span style="width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80"></span></a>
+    <a href="Settings.dc.html" aria-label="Settings" class="nav"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></a>
+  </nav>
+
+  <main style="position: relative; margin-left: 96px; padding: 30px 34px; display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+      <div>
+        <h1 style="margin: 0 0 4px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Projects</h1>
+        <p style="margin: 0; color: #9aa7c2">Each project holds your VODs and the clips found in them. Drop a video anywhere to start a new one.</p>
+      </div>
+      <button onClick="{{openNew}}" class="pill" style="height: 44px; font-size: 14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New project</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px">
+      <sc-for list="{{projects}}" as="p" hint-placeholder-count="3">
+        <a href="Project.dc.html" class="glass" style="border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; padding: 8px">
+          <div style="position: relative; height: 136px; border-radius: 14px; background: #15233f">
+            <span style="position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: #8794b0">Latest VOD frame</span>
+            <span style="position: absolute; right: 10px; top: 10px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: {{p.badgeBg}}; color: {{p.badgeFg}}">{{p.status}}</span>
+          </div>
+          <div style="padding: 12px 8px 6px; display: flex; flex-direction: column; gap: 4px">
+            <span style="font-weight: 600; font-size: 14px">{{p.name}}</span>
+            <span style="font-size: 12px; color: #9aa7c2">{{p.meta}}</span>
+          </div>
+        </a>
+      </sc-for>
+    </div>
+  </main>
+
+  <sc-if value="{{dlg}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(4,8,18,0.55); display: flex; align-items: center; justify-content: center">
+      <div role="dialog" aria-label="New project" class="glass float" style="width: 540px; max-width: calc(100% - 40px); border-radius: 24px; background: rgba(26,40,70,0.72); overflow: hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.06)">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 600">New project</h2>
+          <button onClick="{{closeNew}}" aria-label="Close" style="width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,0.08); color: #c8d1e4; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div style="padding: 18px; display: flex; flex-direction: column; gap: 16px">
+          <sc-if value="{{noFile}}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{pick}}" style="height: 150px; border-radius: 16px; border: 1px dashed rgba(160,180,220,0.45); background: rgba(255,255,255,0.03); color: #eef2fb; font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+              <span style="width: 44px; height: 44px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 15V4m-4 4 4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"></path></svg></span>
+              <span style="font-size: 14px; font-weight: 600">Drop a VOD here or choose a file</span>
+              <span style="font-size: 12px; color: #9aa7c2">MKV, MP4, MOV, WebM · add more videos later</span>
+            </button>
+          </sc-if>
+          <sc-if value="{{hasFile}}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius: 16px; border: 1px dashed rgba(160,180,220,0.35); padding: 12px; display: flex; gap: 12px; align-items: center">
+              <div style="width: 84px; height: 48px; border-radius: 10px; background: #15233f; flex: none"></div>
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+                <div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">ranked-night-2026-11-20.mkv</span><span style="color: #9aa7c2; flex: none">{{impText}}</span></div>
+                <div role="progressbar" aria-label="Import progress" style="height: 3px; border-radius: 2px; background: rgba(255,255,255,0.12)"><div style="height: 3px; width: {{impW}}; border-radius: 2px; background: #f1f4fa"></div></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="pn" style="font-size: 12px; color: #9aa7c2">Project name</label>
+            <input id="pn" value="{{name}}" onChange="{{onName}}" placeholder="Filled in from the video’s name" style="height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(6,12,26,0.45); color: #eef2fb; font: inherit; font-size: 14px; outline: none">
+          </div>
+
+          <button onClick="{{toggleAuto}}" role="checkbox" aria-checked="{{auto}}" style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.04); color: #eef2fb; font: inherit; text-align: left; cursor: pointer">
+            <span style="width: 22px; height: 22px; flex: none; border-radius: 50%; border: 1.5px solid {{boxBorder}}; background: {{boxBg}}; display: flex; align-items: center; justify-content: center">
+              <sc-if value="{{auto}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></sc-if>
+            </span>
+            <span style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-weight: 600">Find clips when the import finishes</span>
+              <span style="font-size: 12px; color: #9aa7c2; line-height: 1.45">Gameplay stream · 30–60 s · facecam detected automatically · transcript and thumbnail picks</span>
+              <sc-if value="{{auto}}" hint-placeholder-val="{{ true }}"><span style="font-size: 12px; color: #dfe6f5; text-decoration: underline; text-underline-offset: 3px">Change settings</span></sc-if>
+            </span>
+          </button>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px dashed rgba(160,180,220,0.25)">
+          <button onClick="{{closeNew}}" class="pill2">Cancel</button>
+          <sc-if value="{{hasFile}}" hint-placeholder-val="{{ false }}">
+            <a href="Project.dc.html" class="pill">Create project</a>
+          </sc-if>
+          <sc-if value="{{noFile}}" hint-placeholder-val="{{ true }}">
+            <span class="pill" style="background: rgba(241,244,250,0.25); color: #6f7d99; cursor: default">Create project</span>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { dlg: false, file: false, name: '', imp: 0, auto: true };
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    const st = this.state;
+    return {
+      projects: [
+        { name: 'Ranked nights', meta: '3 videos · 21 clips found', status: '21 clips', badgeBg: '#f1f4fa', badgeFg: '#0a1120' },
+        { name: 'Horror playthrough', meta: '2 videos · finding clips…', status: 'Working', badgeBg: 'rgba(10,17,32,0.7)', badgeFg: '#dfe6f5' },
+        { name: 'Collab weekend', meta: '1 video · 6 exported', status: 'Exported', badgeBg: 'rgba(74,222,128,0.18)', badgeFg: '#86efac' }
+      ],
+      dlg: st.dlg, noFile: !st.file, hasFile: st.file, name: st.name, auto: st.auto,
+      impW: st.imp + '%', impText: st.imp >= 100 ? 'Ready' : 'Importing ' + st.imp + '%',
+      boxBorder: st.auto ? '#f1f4fa' : '#7b88a6', boxBg: st.auto ? '#f1f4fa' : 'transparent',
+      openNew: () => this.setState({ dlg: true }),
+      closeNew: () => { clearInterval(this.timer); this.setState({ dlg: false, file: false, name: '', imp: 0 }); },
+      onName: (e) => this.setState({ name: e.target.value }),
+      toggleAuto: () => this.setState({ auto: !st.auto }),
+      pick: () => {
+        this.setState({ file: true, name: 'Ranked night 20 Nov', imp: 0 });
+        clearInterval(this.timer);
+        this.timer = setInterval(() => {
+          const p = Math.min(100, this.state.imp + 2);
+          this.setState({ imp: p });
+          if (p >= 100) clearInterval(this.timer);
+        }, 150);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

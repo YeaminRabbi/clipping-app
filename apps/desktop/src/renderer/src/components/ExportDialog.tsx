@@ -5,6 +5,7 @@ import { ASPECTS } from '../lib/aspects'
 import { shortDuration } from '../lib/time'
 import { useApp } from '../store'
 import { Modal } from './Modal'
+import { exportDirFor } from '../lib/exportFolder'
 
 const PRESET_STORAGE_KEY = 'clipping.exportPreset'
 const DEFAULT_TEMPLATE = '{project}_{index}_{title}_{ratio}'
@@ -70,7 +71,7 @@ export function ExportDialog() {
 
   useEffect(() => {
     if (!preset.output_dir && project) {
-      void window.clipping.files.defaultExportDir(project.name).then((dir) => setPreset((p) => ({ ...p, output_dir: dir })))
+      void exportDirFor(project.name).then((dir) => setPreset((p) => ({ ...p, output_dir: dir })))
     }
   }, [preset.output_dir, project])
 
@@ -142,7 +143,7 @@ export function ExportDialog() {
             <button
               onClick={() => void submit()}
               disabled={busy || total === 0 || !preset.output_dir || !preset.name_template.trim()}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
             >
               {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}
               {busy ? 'Starting' : `Export ${total || ''}`}

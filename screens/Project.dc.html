@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project: videos</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#0a1120}
+a{color:#eef2fb;text-decoration:none}
+input::placeholder{color:#8794b0}
+.glass{background:rgba(58,82,130,0.20);border:1px solid rgba(255,255,255,0.08);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 20px 50px rgba(2,6,16,0.45)}
+.float{backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%)}
+.pill{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:0;background:#f1f4fa;color:#0a1120;font:inherit;font-weight:600;cursor:pointer}
+.pill:hover{background:#ffffff}
+.pill2{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:transparent;color:#e6ebf5;font:inherit;cursor:pointer}
+.pill2:hover{background:rgba(255,255,255,0.10)}
+.nav{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#aeb9d1}
+.nav:hover{background:rgba(255,255,255,0.10);color:#fff}
+</style>
+</helmet>
+<div style="position: relative; min-height: 800px; overflow: hidden; background: #0a1120; color: #eef2fb; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <div aria-hidden="true" style="position: absolute; left: 25%; top: -240px; width: 760px; height: 520px; border-radius: 50%; background: #23416f; opacity: 0.55; filter: blur(140px)"></div>
+  <div aria-hidden="true" style="position: absolute; right: -160px; bottom: -220px; width: 620px; height: 560px; border-radius: 50%; background: #1a2f55; opacity: 0.7; filter: blur(140px)"></div>
+  <nav aria-label="Main" class="glass float" style="z-index: 2; position: absolute; left: 14px; top: 14px; bottom: 14px; width: 68px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 8px; box-sizing: border-box">
+    <div style="width: 42px; height: 42px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center; margin-bottom: 12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg>
+    </div>
+    <a href="Main.dc.html" aria-label="Home" class="nav" style="background: rgba(255,255,255,0.12); color: #fff">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></a>
+    <span style="flex: 1"></span>
+    <a href="Settings.dc.html" aria-label="Engine ready, open system check" class="nav"><span style="width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80"></span></a>
+    <a href="Settings.dc.html" aria-label="Settings" class="nav"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></a>
+  </nav>
+
+  <main style="position: relative; margin-left: 96px; padding: 30px 34px; display: flex; flex-direction: column; gap: 18px; max-width: 1060px">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+      <div>
+        <div style="font-size: 12px; color: #9aa7c2; margin-bottom: 4px"><a href="Main.dc.html" style="color: #9aa7c2">Projects</a> /</div>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Ranked nights</h1>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <button class="pill2" style="height: 44px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add video</button>
+        <a href="Editor.dc.html" class="pill" style="height: 44px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14"></path></svg>Export {{totalClips}} clips</a>
+      </div>
+    </div>
+
+    <div class="glass" style="border-radius: 22px; overflow: hidden">
+      <div style="display: flex; justify-content: space-between; padding: 12px 18px; background: rgba(255,255,255,0.05); font-size: 12px; color: #9aa7c2"><span>Videos (3)</span><span>Clips</span></div>
+      <div style="padding: 8px; display: flex; flex-direction: column; gap: 8px">
+        <div style="border-radius: 16px; border: 1px dashed rgba(160,180,220,0.35); padding: 12px; display: flex; gap: 16px; flex-wrap: wrap">
+          <div style="position: relative; width: 168px; height: 94px; flex: none; border-radius: 12px; background: #15233f">
+            <span style="position: absolute; left: 7px; top: 7px; width: 42px; height: 28px; border: 1.5px dashed #dfe6f5; border-radius: 5px"></span>
+            <span style="position: absolute; right: 7px; bottom: 7px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(10,17,32,0.8)">3:58:12</span>
+          </div>
+          <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap">
+              <div><div style="font-weight: 600; font-size: 14px">ranked-night-2026-11-20.mkv</div><div style="font-size: 12px; color: #9aa7c2">Added just now · F:\VODs</div></div>
+              <sc-if value="{{isDone}}" hint-placeholder-val="{{ false }}">
+                <a href="Editor.dc.html" class="pill">Edit 8 clips</a>
+              </sc-if>
+              <sc-if value="{{isReady}}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{openFind}}" class="pill2">Find clips</button>
+              </sc-if>
+            </div>
+            <sc-if value="{{working}}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-direction: column; gap: 7px">
+                <div style="display: flex; justify-content: space-between; font-size: 12px"><span>{{stepText}}</span><span style="color: #9aa7c2">{{pct}}%</span></div>
+                <div role="progressbar" aria-label="Progress" style="height: 3px; border-radius: 2px; background: rgba(255,255,255,0.12)"><div style="height: 3px; width: {{pctW}}; border-radius: 2px; background: #f1f4fa"></div></div>
+              </div>
+            </sc-if>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+              <button onClick="{{toggleAuto}}" role="checkbox" aria-checked="{{auto}}" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 4px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: transparent; color: #eef2fb; font: inherit; font-size: 11px; cursor: pointer">
+                <span style="width: 20px; height: 20px; border-radius: 50%; background: {{autoDot}}; color: #0a1120; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">{{autoMark}}</span>{{autoText}}</button>
+              <span style="font-size: 11px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: #c8d1e4">1080p · 60 fps</span>
+              <span style="font-size: 11px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: #c8d1e4">Mic on track 2</span>
+              <span style="font-size: 11px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: #c8d1e4">Facecam · top-left</span>
+            </div>
+          </div>
+        </div>
+
+        <sc-for list="{{others}}" as="s" hint-placeholder-count="2">
+          <div style="border-radius: 16px; padding: 12px; display: flex; gap: 16px; flex-wrap: wrap; border-top: 1px dashed rgba(160,180,220,0.18)">
+            <div style="position: relative; width: 168px; height: 94px; flex: none; border-radius: 12px; background: #15233f">
+              <span style="position: absolute; right: 7px; bottom: 7px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(10,17,32,0.8)">{{s.dur}}</span>
+            </div>
+            <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+              <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap">
+                <div><div style="font-weight: 600; font-size: 14px">{{s.name}}</div><div style="font-size: 12px; color: #9aa7c2">{{s.sub}}</div></div>
+                <div style="display: flex; gap: 8px">
+                  <button onClick="{{openFind}}" class="pill2">Find clips</button>
+                  <a href="Editor.dc.html" class="pill">Edit {{s.clips}} clips</a>
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap">
+                <sc-for list="{{s.tags}}" as="t" hint-placeholder-count="3"><span style="font-size: 11px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: #c8d1e4">{{t}}</span></sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </main>
+
+  <sc-if value="{{find}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(4,8,18,0.55); display: flex; align-items: center; justify-content: center; z-index: 3">
+      <div role="dialog" aria-label="Find clips" class="glass float" style="width: 520px; max-width: calc(100% - 40px); border-radius: 24px; background: rgba(26,40,70,0.72); overflow: hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,0.05)">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 600">Find clips</h2>
+          <button onClick="{{closeFind}}" aria-label="Close" style="width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,0.08); color: #c8d1e4; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div style="padding: 18px; display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+            <span style="font-size: 12px; color: #9aa7c2; margin-top: 4px">{{g.label}}</span>
+            <div role="radiogroup" aria-label="{{g.label}}" style="display: flex; gap: 6px; flex-wrap: wrap">
+              <sc-for list="{{g.opts}}" as="o" hint-placeholder-count="3">
+                <button onClick="{{o.pick}}" role="radio" aria-checked="{{o.on}}" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid {{o.border}}; background: {{o.bg}}; color: {{o.fg}}; font: inherit; font-weight: 500; cursor: pointer">{{o.label}}</button>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px dashed rgba(160,180,220,0.25)">
+          <button onClick="{{closeFind}}" class="pill2">Cancel</button>
+          <button onClick="{{runFind}}" class="pill">Find clips</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { stage: 'import', pct: 0, auto: true, find: false, sel: { kind: 'Gameplay', len: '30–60 s', cam: 'Detect automatically' } };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      const st = this.state;
+      if (st.stage !== 'import' && st.stage !== 'finding') return;
+      const p = Math.min(100, st.pct + 2);
+      if (p < 100) return this.setState({ pct: p });
+      if (st.stage === 'import' && st.auto) return this.setState({ stage: 'finding', pct: 0 });
+      this.setState({ stage: st.stage === 'import' ? 'ready' : 'done', pct: 100 });
+    }, 130);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    const st = this.state;
+    const steps = ['Checking facecam', 'Scanning audio for shouts', 'Finding scene changes', 'Transcribing candidates', 'Picking thumbnails'];
+    const importing = st.stage === 'import';
+    const defs = [['kind', 'Kind of video', ['Talking', 'Action', 'Gameplay', 'Even split']], ['len', 'Clip length', ['15–30 s', '30–60 s', '60–90 s']], ['cam', 'Facecam', ['Detect automatically', 'Preset: Main layout', 'No facecam']]];
+    const groups = defs.map((g) => ({ label: g[1], opts: g[2].map((o) => {
+      const on = st.sel[g[0]] === o;
+      return { label: o, on: on, bg: on ? '#f1f4fa' : 'transparent', fg: on ? '#0a1120' : '#e6ebf5', border: on ? '#f1f4fa' : 'rgba(255,255,255,0.2)', pick: () => this.setState({ sel: Object.assign({}, st.sel, { [g[0]]: o }) }) };
+    }) }));
+    return {
+      working: importing || st.stage === 'finding', isDone: st.stage === 'done', isReady: st.stage === 'ready',
+      stepText: importing ? 'Importing and preparing preview' : 'Finding clips · ' + steps[Math.min(4, Math.floor(st.pct / 20))],
+      pct: st.pct, pctW: st.pct + '%', totalClips: st.stage === 'done' ? 21 : 13,
+      auto: st.auto, autoMark: st.auto ? '✓' : '', autoDot: st.auto ? '#f1f4fa' : 'rgba(255,255,255,0.12)',
+      autoText: importing ? 'Find clips when import finishes' : (st.auto ? 'Auto clipping on' : 'Auto clipping off'),
+      toggleAuto: () => { if (st.stage === 'import') this.setState({ auto: !st.auto }); },
+      others: [
+        { name: 'ranked-night-2026-11-13.mkv', sub: 'Added 13 Nov · F:\\VODs', dur: '4:12:40', clips: 9, tags: ['1080p · 60 fps', 'Facecam · top-left', '4 of 9 exported'] },
+        { name: 'ranked-night-2026-11-06.mkv', sub: 'Added 6 Nov · F:\\VODs', dur: '3:21:05', clips: 4, tags: ['1080p · 60 fps', 'No facecam'] }
+      ],
+      find: st.find, groups: groups,
+      openFind: () => this.setState({ find: true }),
+      closeFind: () => this.setState({ find: false }),
+      runFind: () => this.setState({ find: false, stage: st.stage === 'ready' ? 'finding' : st.stage, pct: st.stage === 'ready' ? 0 : st.pct })
+    };
+  }
+}
+</script>
+</body>
+</html>

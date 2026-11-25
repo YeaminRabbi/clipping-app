@@ -11,18 +11,20 @@ export function ProjectView() {
   const { closeProject, openExportDialog } = useApp.getState()
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <button onClick={closeProject} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
-          <ArrowLeft size={14} aria-hidden />
-          Projects
-        </button>
-        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{project?.name ?? 'Project'}</h2>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
+      <div className="flex items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <button onClick={closeProject} className="not-pill inline-flex items-center gap-1 text-xs text-muted hover:text-ink">
+            <ArrowLeft size={13} aria-hidden />
+            Projects
+          </button>
+          <h2 className="mt-1 truncate text-3xl font-semibold tracking-[-0.02em]">{project?.name ?? 'Project'}</h2>
+        </div>
         <button
           onClick={() => openExportDialog(clips.map((c) => c.id))}
           disabled={clips.length === 0}
           title={clips.length === 0 ? 'Open a video and make some clips first' : undefined}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex h-11 items-center gap-1.5 rounded-md bg-accent text-on-accent px-5 text-sm font-semibold hover:bg-accent-hover disabled:opacity-50"
         >
           <Download size={16} aria-hidden />
           Export {clips.length > 0 ? `${clips.length} clip${clips.length === 1 ? '' : 's'}` : 'clips'}
@@ -31,7 +33,7 @@ export function ProjectView() {
 
       <ImportPanel />
 
-      <section className="rounded-xl border border-line bg-panel p-5">
+      <section className="rounded-2xl border border-line bg-panel p-5 shadow-card">
         <h2 className="text-sm font-semibold">
           Sources <span className="font-normal text-muted">({sources.length})</span>
         </h2>

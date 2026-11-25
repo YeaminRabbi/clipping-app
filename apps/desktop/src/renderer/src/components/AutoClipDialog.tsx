@@ -1,10 +1,9 @@
 import { LoaderCircle, Sparkles } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AnalysisMode, AnalyzeParams, SpeechModel } from '../lib/api'
+import { PREFS_KEY, loadPrefs, type Prefs } from '../lib/autoClipPrefs'
 import { useApp } from '../store'
 import { Modal } from './Modal'
-
-const PREFS_KEY = 'clipping.autoClipPrefs'
 
 const MODES: { key: AnalysisMode; title: string; text: string }[] = [
   { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Picks complete thoughts with strong openings.' },
@@ -38,27 +37,6 @@ const LANGUAGES: [string, string][] = [
   ['ko', 'Korean'],
   ['zh', 'Chinese']
 ]
-
-interface Prefs {
-  mode: AnalysisMode
-  auto: boolean
-  count: number
-  min: number
-  max: number
-  model: SpeechModel
-  language: string
-}
-
-const DEFAULT_PREFS: Prefs = { mode: 'talking', auto: true, count: 5, min: 30, max: 60, model: 'base', language: '' }
-
-function loadPrefs(): Prefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY)
-    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : DEFAULT_PREFS
-  } catch {
-    return DEFAULT_PREFS
-  }
-}
 
 const toClock = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
 
@@ -165,7 +143,7 @@ export function AutoClipDialog() {
             <button
               onClick={() => void submit()}
               disabled={busy || problem !== null}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
             >
               {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Sparkles size={16} />}
               {busy ? 'Starting' : 'Find clips'}

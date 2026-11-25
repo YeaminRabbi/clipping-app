@@ -72,7 +72,7 @@ export function CropOverlay({ crop, frameW, frameH, targetRatio, srcAspect, edit
       onPointerDown={begin(c)}
       onPointerMove={move}
       onPointerUp={end}
-      className={`absolute size-3.5 rounded-sm border-2 border-white bg-accent ${cls}`}
+      className={`absolute size-3.5 rounded-sm border-2 border-white bg-on-accent ${cls}`}
     />
   )
 

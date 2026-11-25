@@ -140,7 +140,7 @@ function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Pro
             <button
               onClick={() => void transcribe(sourceId, 'base', null)}
               disabled={transcribing}
-              className="shrink-0 rounded bg-accent px-2 py-1 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className="shrink-0 rounded bg-accent text-on-accent px-2 py-1 font-medium hover:bg-accent-hover disabled:opacity-50"
             >
               {transcribing ? 'Transcribing' : 'Transcribe'}
             </button>
@@ -284,7 +284,7 @@ export function ClipPanel(props: Props) {
           </button>
           <button
             onClick={props.onAdd}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
             title="Add clip (N)"
           >
             <Plus size={14} aria-hidden />
@@ -307,7 +307,7 @@ export function ClipPanel(props: Props) {
           <li key={clip.id}>
             <button
               onClick={() => props.onSelect(clip.id === selected?.id ? null : clip.id)}
-              className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left ${
+              className={`not-pill flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left ${
                 clip.id === selected?.id ? 'bg-amber-400/15 ring-1 ring-amber-400/60' : 'hover:bg-panel-2'
               }`}
             >
@@ -353,7 +353,7 @@ export function ClipPanel(props: Props) {
                 key={a.key}
                 onClick={() => props.onAspect(a.key)}
                 title={a.label}
-                className={`flex flex-col items-center gap-1 rounded-md border px-1 py-2 text-[10px] ${
+                className={`not-pill flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[10px] ${
                   aspect === a.key ? 'border-accent bg-accent/15 text-white' : 'border-line text-muted hover:bg-panel-2'
                 }`}
               >

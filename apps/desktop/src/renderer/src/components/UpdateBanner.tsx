@@ -11,25 +11,33 @@ export function UpdateBanner() {
   }, [])
 
   if (status?.state === 'downloading') {
-    return <span className="text-xs text-muted">Downloading update {status.version} · {status.percent ?? 0}%</span>
+    return (
+      <div className="flex justify-end px-4 pt-3.5">
+        <span className="text-xs text-muted">Downloading update {status.version} · {status.percent ?? 0}%</span>
+      </div>
+    )
   }
   if (status?.state === 'available') {
     return (
+      <div className="flex justify-end px-4 pt-3.5">
       <div className="flex items-center gap-2 rounded-full border border-line bg-panel-2 py-1 pr-1 pl-3 text-xs text-muted">
         Version {status.version} is available
         <button onClick={() => void window.clipping.app.downloadUpdate()} className="rounded-full border border-line px-2.5 py-0.5 hover:bg-panel">
           Download
         </button>
       </div>
+      </div>
     )
   }
   if (status?.state !== 'ready') return null
   return (
+    <div className="flex justify-end px-4 pt-3.5">
     <div className="flex items-center gap-2 rounded-full border border-accent/50 bg-accent/15 py-1 pr-1 pl-3 text-xs">
       Version {status.version} is ready
-      <button onClick={() => void window.clipping.app.installUpdate()} className="rounded-full bg-accent px-2.5 py-0.5 font-medium hover:bg-accent-hover">
+      <button onClick={() => void window.clipping.app.installUpdate()} className="rounded-full bg-accent text-on-accent px-2.5 py-0.5 font-medium hover:bg-accent-hover">
         Restart to update
       </button>
+    </div>
     </div>
   )
 }

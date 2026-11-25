@@ -64,7 +64,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onMouseDown={() => onCloseRef.current()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
       <div
         ref={panelRef}
         role="dialog"
@@ -74,9 +74,9 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
-        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-dialog outline-none`}
+        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-2xl border border-line bg-dialog shadow-dialog outline-none glass-float`}
       >
-        <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-line bg-white/5 px-5 py-4">
           {icon && <div className="shrink-0">{icon}</div>}
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-lg font-semibold">
@@ -92,13 +92,13 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
             data-modal-close
             onClick={() => onCloseRef.current()}
             aria-label="Close"
-            className="-mr-1.5 grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-panel-2 hover:text-ink"
+            className="-mr-1.5 grid size-8 shrink-0 place-items-center rounded-full bg-white/8 text-muted hover:bg-white/15 hover:text-ink"
           >
             <X size={16} />
           </button>
         </div>
         {children}
-        {footer && <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">{footer}</div>}
+        {footer && <div className="flex items-center justify-between gap-3 border-t border-dashed border-white/15 px-5 py-3">{footer}</div>}
       </div>
     </div>
   )

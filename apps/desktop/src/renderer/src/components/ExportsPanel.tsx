@@ -32,7 +32,7 @@ export function ExportsPanel() {
   const folder = done[0]?.output_path?.replace(/[\\/][^\\/]+$/, '')
 
   return (
-    <section className="rounded-xl border border-line bg-panel p-5">
+    <section className="rounded-2xl border border-line bg-panel p-5 shadow-card">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">
           Exports{' '}

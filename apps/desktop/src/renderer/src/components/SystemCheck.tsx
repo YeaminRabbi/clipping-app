@@ -33,7 +33,7 @@ export function SystemCheck() {
   const encoders = ff ? Object.keys(ff.hw_encoders) : []
 
   return (
-    <section className="h-fit rounded-xl border border-line bg-panel p-5">
+    <section className="h-fit rounded-2xl border border-line bg-panel p-5 shadow-card">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold">System check</h2>
         <button

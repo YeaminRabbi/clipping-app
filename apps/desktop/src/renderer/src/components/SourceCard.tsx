@@ -1,9 +1,10 @@
-import { LoaderCircle, RotateCcw, Scissors, Sparkles, Trash2, X } from 'lucide-react'
+import { Check, LoaderCircle, RotateCcw, Scissors, Sparkles, Trash2, X } from 'lucide-react'
 import { ACTIVE_STATUSES, type Source } from '../lib/api'
 import { formatBytes, formatDuration, formatFps, formatResolution } from '../lib/format'
 import { useApp } from '../store'
 import { confirmAction } from '../lib/confirm'
 import { AnalysisStatus } from './AnalysisStatus'
+import { describePrefs, loadPrefs, paramsFromPrefs } from '../lib/autoClipPrefs'
 
 const STAGE_LABELS: Record<Source['status'], string> = {
   queued: 'Waiting to start',
@@ -27,6 +28,8 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
   const openEditor = useApp((s) => s.openEditor)
   const openAutoClipDialog = useApp((s) => s.openAutoClipDialog)
   const analysing = useApp((s) => ['queued', 'running'].includes(s.analyses[source.id]?.status ?? ''))
+  const autoClipQueued = useApp((s) => source.id in s.autoClipOnReady)
+  const setAutoClipOnReady = useApp((s) => s.setAutoClipOnReady)
 
   const active = ACTIVE_STATUSES.includes(source.status)
   const percent = Math.round(source.progress * 100)
@@ -34,11 +37,11 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
   const name = displayName(source)
 
   return (
-    <li className="flex gap-4 rounded-lg border border-line bg-panel-2 p-3">
+    <li className="flex gap-4 rounded-2xl border border-line bg-panel-2 p-3">
       <button
         onClick={() => source.status === 'ready' && openEditor(source.id)}
         disabled={source.status !== 'ready'}
-        className="group relative aspect-video w-44 shrink-0 overflow-hidden rounded-md bg-black/50 enabled:cursor-pointer"
+        className="not-pill group relative aspect-video w-44 shrink-0 overflow-hidden rounded-xl bg-video enabled:cursor-pointer"
         title={source.status === 'ready' ? 'Open in editor' : undefined}
       >
         {source.poster_url && client ? (
@@ -82,7 +85,7 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
                 </button>
                 <button
                   onClick={() => openEditor(source.id)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
                 >
                   <Scissors size={14} aria-hidden />
                   {clipCount > 0 ? `Edit ${clipCount} clip${clipCount === 1 ? '' : 's'}` : 'Open editor'}
@@ -135,6 +138,18 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
           )}
           {active ? (
             <>
+              <button
+                role="switch"
+                aria-checked={autoClipQueued}
+                onClick={() => setAutoClipOnReady(source.id, autoClipQueued ? null : paramsFromPrefs(loadPrefs()))}
+                title={autoClipQueued ? 'Clips will be found as soon as this import finishes' : `Find clips when ready (${describePrefs(loadPrefs())})`}
+                className="mb-2.5 inline-flex h-7 items-center gap-1.5 rounded-full border border-white/20 py-0 pr-3 pl-1 text-[11px] hover:bg-white/10"
+              >
+                <span className={`grid size-5 place-items-center rounded-full ${autoClipQueued ? 'bg-accent text-on-accent' : 'bg-white/12'}`}>
+                  {autoClipQueued && <Check size={11} strokeWidth={3} aria-hidden />}
+                </span>
+                Find clips when the import finishes
+              </button>
               <div className="mb-1.5 flex justify-between text-xs text-muted">
                 <span>{STAGE_LABELS[source.status]}</span>
                 {showPercent && <span>{percent}%</span>}

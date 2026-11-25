@@ -100,7 +100,7 @@ export function Stage(props: Props) {
   const solid = view === 'preview' && mode === 'fit' && fit.background !== 'blur'
 
   return (
-    <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center overflow-hidden bg-black">
+    <div ref={stageRef} className="video-surface relative grid min-h-0 flex-1 place-items-center overflow-hidden">
       <div
         className="relative overflow-hidden"
         style={{ width: frame.w, height: frame.h, background: solid ? fit.background : undefined }}

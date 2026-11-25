@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings: system check</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#0a1120}
+a{color:#eef2fb;text-decoration:none}
+input::placeholder{color:#8794b0}
+.glass{background:rgba(58,82,130,0.20);border:1px solid rgba(255,255,255,0.08);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 20px 50px rgba(2,6,16,0.45)}
+.float{backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%)}
+.pill{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:0;background:#f1f4fa;color:#0a1120;font:inherit;font-weight:600;cursor:pointer}
+.pill:hover{background:#ffffff}
+.pill2{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:transparent;color:#e6ebf5;font:inherit;cursor:pointer}
+.pill2:hover{background:rgba(255,255,255,0.10)}
+.nav{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#aeb9d1}
+.nav:hover{background:rgba(255,255,255,0.10);color:#fff}
+</style>
+</helmet>
+<div style="position: relative; min-height: 800px; overflow: hidden; background: #0a1120; color: #eef2fb; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <div aria-hidden="true" style="position: absolute; left: 20%; top: -240px; width: 760px; height: 520px; border-radius: 50%; background: #23416f; opacity: 0.55; filter: blur(140px)"></div>
+  <div aria-hidden="true" style="position: absolute; right: -160px; bottom: -220px; width: 620px; height: 560px; border-radius: 50%; background: #1a2f55; opacity: 0.7; filter: blur(140px)"></div>
+  <nav aria-label="Main" class="glass float" style="z-index: 2; position: absolute; left: 14px; top: 14px; bottom: 14px; width: 68px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 8px; box-sizing: border-box">
+    <div style="width: 42px; height: 42px; border-radius: 50%; background: #f1f4fa; display: flex; align-items: center; justify-content: center; margin-bottom: 12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1120" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg>
+    </div>
+    <a href="Main.dc.html" aria-label="Home" class="nav">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></a>
+    <span style="flex: 1"></span>
+    <a href="Settings.dc.html" aria-label="Engine ready, open system check" class="nav"><span style="width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80"></span></a>
+    <a href="Settings.dc.html" aria-label="Settings" class="nav" style="background: rgba(255,255,255,0.12); color: #fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></a>
+  </nav>
+
+  <main style="position: relative; margin-left: 96px; padding: 30px 34px; display: flex; flex-direction: column; gap: 18px; max-width: 1400px">
+    <div>
+      <h1 style="margin: 0 0 4px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Settings</h1>
+      <p style="margin: 0; color: #9aa7c2">Check that everything the app needs is working, and where it keeps its files.</p>
+    </div>
+
+    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
+      <section class="glass" style="flex: 4 1 0%; min-width: 520px; max-width: 100%; border-radius: 22px; overflow: hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(255,255,255,0.05)">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <h2 style="margin: 0; font-size: 15px; font-weight: 600">System check</h2>
+            <span style="font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{badgeBg}}; color: {{badgeFg}}">{{badge}}</span>
+          </div>
+          <button onClick="{{restart}}" class="pill2" style="height: 34px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg>Restart engine</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr); padding: 6px 18px 0; font-size: 11px; color: #8794b0"><span>Component</span><span>Status</span></div>
+        <div style="padding: 0 8px 8px">
+          <sc-for list="{{checks}}" as="c" hint-placeholder-count="7">
+            <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 0; padding: 12px 10px; border-bottom: 1px dashed rgba(160,180,220,0.18); align-items: start">
+              <span style="display: flex; align-items: center; gap: 10px; font-weight: 600">
+                <span style="width: 22px; height: 22px; flex: none; border-radius: 50%; background: {{c.dotBg}}; color: {{c.dotFg}}; border: 1px solid {{c.dotBorder}}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">{{c.mark}}</span>{{c.title}}</span>
+              <span style="color: {{c.fg}}; line-height: 1.5">{{c.detail}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 12px 18px; color: #9aa7c2; font-size: 12px"><span>Clipping App 0.2.0</span><span style="display: flex; align-items: center; gap: 6px; color: #dfe6f5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Open logs folder</span></div>
+      </section>
+
+      <div style="flex: 1 1 0%; min-width: 280px; max-width: 100%; display: flex; flex-direction: column; gap: 16px">
+        <section class="glass" style="border-radius: 22px; overflow: hidden">
+          <div style="padding: 12px 16px; background: rgba(255,255,255,0.05)"><h2 style="margin: 0; font-size: 15px; font-weight: 600">Storage</h2></div>
+          <div style="padding: 4px 14px 12px; display: flex; flex-direction: column">
+            <sc-for list="{{storage}}" as="s" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px dashed rgba(160,180,220,0.18)">
+                <div style="display: flex; justify-content: space-between; align-items: baseline"><label for="{{s.id}}" style="font-weight: 600">{{s.k}}</label><span style="font-size: 11px; color: #9aa7c2">{{s.size}}</span></div>
+                <div style="display: flex; gap: 6px; align-items: center">
+                  <input id="{{s.id}}" readonly value="{{s.v}}" title="{{s.v}}" style="flex: 1; min-width: 0; height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(6,12,26,0.45); color: #dfe6f5; font: inherit; font-size: 12px; outline: none; text-overflow: ellipsis">
+                  <button onClick="{{s.change}}" aria-label="Change {{s.k}} location" title="Change location" class="nav" style="width: 34px; height: 34px; flex: none; border: 1px solid rgba(255,255,255,0.22); background: transparent; cursor: pointer; box-sizing: border-box">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"></path></svg></button>
+                  <sc-if value="{{s.canClear}}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{s.clear}}" aria-label="{{s.clrLabel}}" title="{{s.clrLabel}}" style="width: 34px; height: 34px; flex: none; border-radius: 50%; border: 1px solid {{s.clrBorder}}; background: {{s.clrBg}}; color: {{s.clrFg}}; cursor: pointer; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg></button>
+                  </sc-if>
+                  <sc-if value="{{s.noClear}}" hint-placeholder-val="{{ false }}"><span style="width: 34px; flex: none"></span></sc-if>
+                </div>
+                <sc-if value="{{s.hasNote}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 11px; color: {{s.noteFg}}; line-height: 1.45">{{s.note}}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+        <section class="glass" style="border-radius: 22px; overflow: hidden">
+          <div style="padding: 12px 18px; background: rgba(255,255,255,0.05)"><h2 style="margin: 0; font-size: 15px; font-weight: 600">Updates</h2></div>
+          <div style="padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px">
+            <span style="color: #9aa7c2; line-height: 1.5">Manual only. Nothing installs without asking you.</span>
+            <span class="pill2" style="height: 34px; flex: none">Check now</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { starting: false };
+  }
+  componentWillUnmount() { clearTimeout(this.t); }
+  renderVals() {
+    const s = this.state.starting;
+    const rows = [
+      ['Processing engine', 'v0.2.0 · http://127.0.0.1:59787'],
+      ['Database', 'Schema v10 · C:\\Users\\Nafee\\AppData\\Roaming\\Clipping App\\data\\clipping.db'],
+      ['FFmpeg', '9.1 (bundled) · licence notices included'],
+      ['FFprobe', '9.1 (bundled)'],
+      ['Hardware encoding', 'NVIDIA (h264_nvenc, hevc_nvenc) · Intel (h264_qsv) · AMD (h264_amf). Used for exports only.'],
+      ['Speech recognition', 'Runs on the CPU by design, so the GPU stays free. Word-level timing on.'],
+      ['Facecam detection', 'OpenCV face detection · local']
+    ];
+    const checks = rows.map((r, i) => {
+      const first = i === 0;
+      const ok = !s;
+      return {
+        title: r[0],
+        detail: s ? (first ? 'Starting…' : '—') : r[1],
+        mark: ok ? '✓' : (first ? '…' : '×'),
+        dotBg: ok ? '#f1f4fa' : 'transparent', dotFg: ok ? '#0a1120' : (first ? '#dfe6f5' : '#fca5a5'),
+        dotBorder: ok ? '#f1f4fa' : (first ? 'rgba(255,255,255,0.3)' : 'rgba(248,113,113,0.6)'),
+        fg: ok ? '#c8d1e4' : '#8794b0'
+      };
+    });
+    return {
+      checks: checks,
+      badge: s ? 'Engine starting' : 'All good', badgeBg: s ? 'rgba(252,211,77,0.16)' : 'rgba(74,222,128,0.16)', badgeFg: s ? '#fcd34d' : '#86efac',
+      restart: () => { this.setState({ starting: true }); clearTimeout(this.t); this.t = setTimeout(() => this.setState({ starting: false }), 2200); },
+      storage: [
+        { id: 'data', k: 'App data', def: 'C:\\Users\\Nafee\\AppData\\Roaming\\Clipping App', alt: 'D:\\Clipping App\\data', size: '48 MB', clear: 'Clear app data', warn: 'Deletes all projects and found clips. Click the red button again to confirm.', moveNote: 'Projects and the database move here after a restart.' },
+        { id: 'cache', k: 'Models and caches', def: 'C:\\Users\\Nafee\\AppData\\Local\\Clipping App\\cache', alt: 'D:\\Clipping App\\cache', size: '1.6 GB', clear: 'Clear cache', warn: 'Previews and temp files are removed; models re-download when needed. Click the red button again to confirm.', moveNote: 'Existing models are moved for you, so nothing re-downloads.' },
+        { id: 'exp', k: 'Exports', def: 'F:\\Shorts', alt: 'D:\\Shorts', size: '2.1 GB', clear: '', warn: '', moveNote: 'New exports go here. Earlier exports stay in the old folder.' }
+      ].map((r) => {
+        const st = this.state;
+        const moved = !!(st.paths || {})[r.id];
+        const arm = st.arm === r.id;
+        const cleared = !!(st.cleared || {})[r.id];
+        const note = arm ? r.warn : (cleared ? 'Cleared.' : (moved ? r.moveNote : ''));
+        return { id: 'dir-' + r.id, k: r.k, v: moved ? r.alt : r.def, size: cleared ? '0 B' : r.size,
+          canClear: !!r.clear, noClear: !r.clear, clrLabel: arm ? 'Confirm: ' + r.clear.toLowerCase() : r.clear,
+          clrBg: arm ? '#e5484d' : 'transparent', clrFg: arm ? '#ffffff' : '#fca5a5', clrBorder: arm ? '#e5484d' : 'rgba(248,113,113,0.5)',
+          hasNote: !!note, note: note, noteFg: arm ? '#fca5a5' : '#9aa7c2',
+          change: () => this.setState({ arm: null, paths: Object.assign({}, st.paths, { [r.id]: !moved }) }),
+          clear: () => arm ? this.setState({ arm: null, cleared: Object.assign({}, st.cleared, { [r.id]: true }) }) : this.setState({ arm: r.id }) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

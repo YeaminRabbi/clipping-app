@@ -45,7 +45,7 @@ export function ImportPanel() {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
       }}
       onDrop={onDrop}
-      className={`rounded-xl border bg-panel p-5 transition-colors ${dragging ? 'border-accent bg-accent/10' : 'border-line'}`}
+      className={`rounded-2xl border bg-panel p-5 shadow-card transition-colors ${dragging ? 'border-accent bg-accent/10' : 'border-line'}`}
     >
       <h2 className="text-sm font-semibold">Import a video</h2>
       <p className="mt-1 text-xs text-muted">
@@ -64,7 +64,7 @@ export function ImportPanel() {
         <button
           type="submit"
           disabled={!ready || busy || !url.trim()}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
         >
           <Link size={16} aria-hidden />
           Import link
