@@ -4,6 +4,7 @@ import type { CaptionCue, CaptionOverrides, CaptionStyle, CaptionTemplate, ClipC
 import { useApp } from '../../store'
 import { AnalysisStatus } from '../AnalysisStatus'
 import { captionTextStyle } from './CaptionOverlay'
+import { Select } from '../Select'
 
 const TEMPLATE_INFO: Record<CaptionTemplate, { name: string; sample: string }> = {
   bold_pop: { name: 'Bold pop', sample: 'Big bold words' },
@@ -122,17 +123,12 @@ export function CaptionsPanel(props: Props) {
         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
           <label className="col-span-2 flex flex-col gap-1">
             <span className="text-muted">Font</span>
-            <select
+            <Select
               value={style.font}
-              onChange={(e) => save({ ...overrides, font: e.target.value })}
+              onChange={(font) => save({ ...overrides, font })}
               className="rounded-md border border-line bg-panel-2 px-2 py-1.5 outline-none focus:border-accent"
-            >
-              {templates.fonts.map((f) => (
-                <option key={f} value={f} style={{ fontFamily: f }}>
-                  {f}
-                </option>
-              ))}
-            </select>
+              options={templates.fonts.map((f) => ({ value: f, label: f, style: { fontFamily: f } }))}
+            />
           </label>
           <label className="col-span-2 flex flex-col gap-1">
             <span className="flex justify-between text-muted">
@@ -204,18 +200,13 @@ export function CaptionsPanel(props: Props) {
           <div className="mt-2 rounded-md border border-line p-3 text-xs">
             <p className="text-muted">Captions come from the speech in the video, which hasn’t been transcribed yet.</p>
             <div className="mt-2 flex gap-2">
-              <select
+              <Select<SpeechModel>
                 value={model}
-                onChange={(e) => setModel(e.target.value as SpeechModel)}
+                onChange={setModel}
                 className="rounded-md border border-line bg-panel-2 px-2 py-1.5 outline-none"
                 title="Accuracy (the model downloads the first time)"
-              >
-                {MODELS.map(([m, label]) => (
-                  <option key={m} value={m}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                options={MODELS.map(([m, label]) => ({ value: m, label }))}
+              />
               <button
                 onClick={() => void transcribe(sourceId, model, null)}
                 disabled={transcribing}

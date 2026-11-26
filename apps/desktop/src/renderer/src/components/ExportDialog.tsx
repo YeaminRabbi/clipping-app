@@ -6,6 +6,7 @@ import { shortDuration } from '../lib/time'
 import { useApp } from '../store'
 import { Modal } from './Modal'
 import { exportDirFor } from '../lib/exportFolder'
+import { Select } from './Select'
 
 const PRESET_STORAGE_KEY = 'clipping.exportPreset'
 const DEFAULT_TEMPLATE = '{project}_{index}_{title}_{ratio}'
@@ -200,15 +201,16 @@ export function ExportDialog() {
             </div>
             <label className="mt-3 flex flex-col gap-1.5">
               <span className="text-xs text-muted">Sizes you didn’t frame in the editor</span>
-              <select
+              <Select
                 value={preset.default_framing}
-                onChange={(e) => setPreset({ ...preset, default_framing: e.target.value as ExportPreset['default_framing'] })}
+                onChange={(v) => setPreset({ ...preset, default_framing: v })}
                 className={selectClass}
-              >
-                <option value="smart">Smart: follow faces</option>
-                <option value="center">Centered crop</option>
-                <option value="fit">Fit: whole frame, blurred background</option>
-              </select>
+                options={[
+                  { value: 'smart' as ExportPreset['default_framing'], label: 'Smart: follow faces' },
+                  { value: 'center' as ExportPreset['default_framing'], label: 'Centered crop' },
+                  { value: 'fit' as ExportPreset['default_framing'], label: 'Fit: whole frame, blurred background' }
+                ]}
+              />
             </label>
             <p className="mt-1.5 text-[11px] text-muted">Framing you set in the editor is always used as is.</p>
           </section>
@@ -216,60 +218,65 @@ export function ExportDialog() {
           <section className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Quality">
-                <select
+                <Select
                   value={preset.quality}
-                  onChange={(e) => setPreset({ ...preset, quality: e.target.value as ExportPreset['quality'] })}
+                  onChange={(v) => setPreset({ ...preset, quality: v })}
                   className={selectClass}
-                >
-                  <option value="high">High</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="small">Smaller files</option>
-                </select>
+                  options={[
+                    { value: 'high' as ExportPreset['quality'], label: 'High' },
+                    { value: 'balanced' as ExportPreset['quality'], label: 'Balanced' },
+                    { value: 'small' as ExportPreset['quality'], label: 'Smaller files' }
+                  ]}
+                />
               </Field>
               <Field label="Resolution">
-                <select
+                <Select
                   value={preset.resolution}
-                  onChange={(e) => setPreset({ ...preset, resolution: Number(e.target.value) as ExportPreset['resolution'] })}
+                  onChange={(v) => setPreset({ ...preset, resolution: v })}
                   className={selectClass}
-                >
-                  <option value={1080}>1080p</option>
-                  <option value={720}>720p</option>
-                </select>
+                  options={[
+                    { value: 1080 as ExportPreset['resolution'], label: '1080p' },
+                    { value: 720 as ExportPreset['resolution'], label: '720p' }
+                  ]}
+                />
               </Field>
               <Field label="Format">
-                <select
+                <Select
                   value={preset.codec}
-                  onChange={(e) => setPreset({ ...preset, codec: e.target.value as ExportPreset['codec'] })}
+                  onChange={(v) => setPreset({ ...preset, codec: v })}
                   className={selectClass}
-                >
-                  <option value="h264">MP4 · H.264 (plays everywhere)</option>
-                  <option value="hevc">MP4 · H.265 (smaller)</option>
-                </select>
+                  options={[
+                    { value: 'h264' as ExportPreset['codec'], label: 'MP4 · H.264 (plays everywhere)' },
+                    { value: 'hevc' as ExportPreset['codec'], label: 'MP4 · H.265 (smaller)' }
+                  ]}
+                />
               </Field>
               <Field label="Frame rate">
-                <select
+                <Select
                   value={preset.fps}
-                  onChange={(e) => setPreset({ ...preset, fps: e.target.value as ExportPreset['fps'] })}
+                  onChange={(v) => setPreset({ ...preset, fps: v })}
                   className={selectClass}
-                >
-                  <option value="source">Same as video</option>
-                  <option value="30">30 fps</option>
-                  <option value="60">60 fps</option>
-                </select>
+                  options={[
+                    { value: 'source' as ExportPreset['fps'], label: 'Same as video' },
+                    { value: '30' as ExportPreset['fps'], label: '30 fps' },
+                    { value: '60' as ExportPreset['fps'], label: '60 fps' }
+                  ]}
+                />
               </Field>
             </div>
 
             <Field label="Captions">
-              <select
+              <Select
                 value={preset.captions}
-                onChange={(e) => setPreset({ ...preset, captions: e.target.value as ExportPreset['captions'] })}
+                onChange={(v) => setPreset({ ...preset, captions: v })}
                 className={selectClass}
-              >
-                <option value="off">No captions</option>
-                <option value="burn">Burn into the video</option>
-                <option value="burn_srt">Burn in + .srt subtitle file</option>
-                <option value="srt">.srt subtitle file only</option>
-              </select>
+                options={[
+                  { value: 'off' as ExportPreset['captions'], label: 'No captions' },
+                  { value: 'burn' as ExportPreset['captions'], label: 'Burn into the video' },
+                  { value: 'burn_srt' as ExportPreset['captions'], label: 'Burn in + .srt subtitle file' },
+                  { value: 'srt' as ExportPreset['captions'], label: '.srt subtitle file only' }
+                ]}
+              />
               {preset.captions !== 'off' && (
                 <span className="text-[11px] text-muted">
                   Uses each clip’s captions and the project’s caption style. Videos that weren’t transcribed are transcribed

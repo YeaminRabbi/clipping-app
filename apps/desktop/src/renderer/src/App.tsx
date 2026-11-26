@@ -6,6 +6,7 @@ import { UpdateBanner } from './components/UpdateBanner'
 import { Projects } from './components/Projects'
 import { ProjectView } from './components/ProjectView'
 import { SettingsView } from './components/SettingsView'
+import { LiveView } from './components/live/LiveView'
 import { NewProjectDialog } from './components/NewProjectDialog'
 import { EditorView } from './components/editor/EditorView'
 import { ExportDialog } from './components/ExportDialog'
@@ -18,6 +19,7 @@ export default function App() {
   const setError = useApp((s) => s.setError)
   const ready = useApp((s) => s.engine.state === 'ready')
   const settingsOpen = useApp((s) => s.settingsOpen)
+  const liveOpen = useApp((s) => s.liveOpen)
   const projectOpen = useApp((s) => s.openProjectId !== null)
   const editorOpen = useApp((s) => s.editorSourceId !== null)
   const exportDialogOpen = useApp((s) => s.exportDialog !== null)
@@ -27,7 +29,7 @@ export default function App() {
 
   useEffect(() => init(), [init])
 
-  const onHome = !settingsOpen && !projectOpen
+  const onHome = !settingsOpen && !liveOpen && !projectOpen
 
   // On the projects home, a video dropped anywhere starts a new project with it.
   const onDragOver = (e: DragEvent) => {
@@ -44,6 +46,10 @@ export default function App() {
   const view = settingsOpen ? (
     <main className="min-h-0 flex-1 overflow-auto">
       <SettingsView />
+    </main>
+  ) : liveOpen ? (
+    <main className="min-h-0 flex-1 overflow-auto">
+      <LiveView />
     </main>
   ) : editorOpen ? (
     <main className="min-h-0 flex-1">

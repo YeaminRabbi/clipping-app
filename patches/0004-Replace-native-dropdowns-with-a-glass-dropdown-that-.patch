@@ -1,0 +1,513 @@
+From 40c6e384396437ec03d5a554caf9605e358bad2a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 26 Nov 2026 21:01:24 +0600
+Subject: [PATCH 4/4] Replace native dropdowns with a glass dropdown that
+ matches the theme
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017BqxA78YwnHzMXEWJJA6VV
+---
+ .../src/components/AutoClipDialog.tsx         |  27 ++-
+ .../renderer/src/components/ExportDialog.tsx  |  89 ++++----
+ .../src/renderer/src/components/Select.tsx    | 209 ++++++++++++++++++
+ .../src/components/editor/CaptionsPanel.tsx   |  27 +--
+ .../renderer/src/components/live/LiveView.tsx |  18 +-
+ 5 files changed, 286 insertions(+), 84 deletions(-)
+ create mode 100644 apps/desktop/src/renderer/src/components/Select.tsx
+
+diff --git a/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx b/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
+index 04ca645..02c8d19 100644
+--- a/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
++++ b/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
+@@ -4,6 +4,7 @@ import type { AnalysisMode, AnalyzeParams, SpeechModel } from '../lib/api'
+ import { PREFS_KEY, loadPrefs, type Prefs } from '../lib/autoClipPrefs'
+ import { useApp } from '../store'
+ import { Modal } from './Modal'
++import { Select } from './Select'
+ 
+ const MODES: { key: AnalysisMode; title: string; text: string }[] = [
+   { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Picks complete thoughts with strong openings.' },
+@@ -249,23 +250,21 @@ export function AutoClipDialog() {
+               <div className="mt-3 grid grid-cols-2 gap-4">
+                 <label className="flex flex-col gap-1.5">
+                   <span className="text-xs text-muted">Accuracy</span>
+-                  <select value={prefs.model} onChange={(e) => set({ model: e.target.value as SpeechModel })} className={inputClass}>
+-                    {MODELS.map((m) => (
+-                      <option key={m.key} value={m.key}>
+-                        {m.label} ({m.size} download, once)
+-                      </option>
+-                    ))}
+-                  </select>
++                  <Select
++                    value={prefs.model}
++                    onChange={(model) => set({ model })}
++                    className={inputClass}
++                    options={MODELS.map((m) => ({ value: m.key, label: `${m.label} (${m.size} download, once)` }))}
++                  />
+                 </label>
+                 <label className="flex flex-col gap-1.5">
+                   <span className="text-xs text-muted">Language</span>
+-                  <select value={prefs.language} onChange={(e) => set({ language: e.target.value })} className={inputClass}>
+-                    {LANGUAGES.map(([code, name]) => (
+-                      <option key={code} value={code}>
+-                        {name}
+-                      </option>
+-                    ))}
+-                  </select>
++                  <Select
++                    value={prefs.language}
++                    onChange={(language) => set({ language })}
++                    className={inputClass}
++                    options={LANGUAGES.map(([code, name]) => ({ value: code, label: name }))}
++                  />
+                 </label>
+               </div>
+               <p className="mt-2 text-[11px] text-muted">
+diff --git a/apps/desktop/src/renderer/src/components/ExportDialog.tsx b/apps/desktop/src/renderer/src/components/ExportDialog.tsx
+index 7e9c7ca..4302b53 100644
+--- a/apps/desktop/src/renderer/src/components/ExportDialog.tsx
++++ b/apps/desktop/src/renderer/src/components/ExportDialog.tsx
+@@ -6,6 +6,7 @@ import { shortDuration } from '../lib/time'
+ import { useApp } from '../store'
+ import { Modal } from './Modal'
+ import { exportDirFor } from '../lib/exportFolder'
++import { Select } from './Select'
+ 
+ const PRESET_STORAGE_KEY = 'clipping.exportPreset'
+ const DEFAULT_TEMPLATE = '{project}_{index}_{title}_{ratio}'
+@@ -200,15 +201,16 @@ export function ExportDialog() {
+             </div>
+             <label className="mt-3 flex flex-col gap-1.5">
+               <span className="text-xs text-muted">Sizes you didn’t frame in the editor</span>
+-              <select
++              <Select
+                 value={preset.default_framing}
+-                onChange={(e) => setPreset({ ...preset, default_framing: e.target.value as ExportPreset['default_framing'] })}
++                onChange={(v) => setPreset({ ...preset, default_framing: v })}
+                 className={selectClass}
+-              >
+-                <option value="smart">Smart: follow faces</option>
+-                <option value="center">Centered crop</option>
+-                <option value="fit">Fit: whole frame, blurred background</option>
+-              </select>
++                options={[
++                  { value: 'smart' as ExportPreset['default_framing'], label: 'Smart: follow faces' },
++                  { value: 'center' as ExportPreset['default_framing'], label: 'Centered crop' },
++                  { value: 'fit' as ExportPreset['default_framing'], label: 'Fit: whole frame, blurred background' }
++                ]}
++              />
+             </label>
+             <p className="mt-1.5 text-[11px] text-muted">Framing you set in the editor is always used as is.</p>
+           </section>
+@@ -216,60 +218,65 @@ export function ExportDialog() {
+           <section className="flex flex-col gap-4">
+             <div className="grid grid-cols-2 gap-3">
+               <Field label="Quality">
+-                <select
++                <Select
+                   value={preset.quality}
+-                  onChange={(e) => setPreset({ ...preset, quality: e.target.value as ExportPreset['quality'] })}
++                  onChange={(v) => setPreset({ ...preset, quality: v })}
+                   className={selectClass}
+-                >
+-                  <option value="high">High</option>
+-                  <option value="balanced">Balanced</option>
+-                  <option value="small">Smaller files</option>
+-                </select>
++                  options={[
++                    { value: 'high' as ExportPreset['quality'], label: 'High' },
++                    { value: 'balanced' as ExportPreset['quality'], label: 'Balanced' },
++                    { value: 'small' as ExportPreset['quality'], label: 'Smaller files' }
++                  ]}
++                />
+               </Field>
+               <Field label="Resolution">
+-                <select
++                <Select
+                   value={preset.resolution}
+-                  onChange={(e) => setPreset({ ...preset, resolution: Number(e.target.value) as ExportPreset['resolution'] })}
++                  onChange={(v) => setPreset({ ...preset, resolution: v })}
+                   className={selectClass}
+-                >
+-                  <option value={1080}>1080p</option>
+-                  <option value={720}>720p</option>
+-                </select>
++                  options={[
++                    { value: 1080 as ExportPreset['resolution'], label: '1080p' },
++                    { value: 720 as ExportPreset['resolution'], label: '720p' }
++                  ]}
++                />
+               </Field>
+               <Field label="Format">
+-                <select
++                <Select
+                   value={preset.codec}
+-                  onChange={(e) => setPreset({ ...preset, codec: e.target.value as ExportPreset['codec'] })}
++                  onChange={(v) => setPreset({ ...preset, codec: v })}
+                   className={selectClass}
+-                >
+-                  <option value="h264">MP4 · H.264 (plays everywhere)</option>
+-                  <option value="hevc">MP4 · H.265 (smaller)</option>
+-                </select>
++                  options={[
++                    { value: 'h264' as ExportPreset['codec'], label: 'MP4 · H.264 (plays everywhere)' },
++                    { value: 'hevc' as ExportPreset['codec'], label: 'MP4 · H.265 (smaller)' }
++                  ]}
++                />
+               </Field>
+               <Field label="Frame rate">
+-                <select
++                <Select
+                   value={preset.fps}
+-                  onChange={(e) => setPreset({ ...preset, fps: e.target.value as ExportPreset['fps'] })}
++                  onChange={(v) => setPreset({ ...preset, fps: v })}
+                   className={selectClass}
+-                >
+-                  <option value="source">Same as video</option>
+-                  <option value="30">30 fps</option>
+-                  <option value="60">60 fps</option>
+-                </select>
++                  options={[
++                    { value: 'source' as ExportPreset['fps'], label: 'Same as video' },
++                    { value: '30' as ExportPreset['fps'], label: '30 fps' },
++                    { value: '60' as ExportPreset['fps'], label: '60 fps' }
++                  ]}
++                />
+               </Field>
+             </div>
+ 
+             <Field label="Captions">
+-              <select
++              <Select
+                 value={preset.captions}
+-                onChange={(e) => setPreset({ ...preset, captions: e.target.value as ExportPreset['captions'] })}
++                onChange={(v) => setPreset({ ...preset, captions: v })}
+                 className={selectClass}
+-              >
+-                <option value="off">No captions</option>
+-                <option value="burn">Burn into the video</option>
+-                <option value="burn_srt">Burn in + .srt subtitle file</option>
+-                <option value="srt">.srt subtitle file only</option>
+-              </select>
++                options={[
++                  { value: 'off' as ExportPreset['captions'], label: 'No captions' },
++                  { value: 'burn' as ExportPreset['captions'], label: 'Burn into the video' },
++                  { value: 'burn_srt' as ExportPreset['captions'], label: 'Burn in + .srt subtitle file' },
++                  { value: 'srt' as ExportPreset['captions'], label: '.srt subtitle file only' }
++                ]}
++              />
+               {preset.captions !== 'off' && (
+                 <span className="text-[11px] text-muted">
+                   Uses each clip’s captions and the project’s caption style. Videos that weren’t transcribed are transcribed
+diff --git a/apps/desktop/src/renderer/src/components/Select.tsx b/apps/desktop/src/renderer/src/components/Select.tsx
+new file mode 100644
+index 0000000..6c10738
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/components/Select.tsx
+@@ -0,0 +1,209 @@
++import { Check, ChevronDown } from 'lucide-react'
++import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
++import { createPortal } from 'react-dom'
++
++export interface SelectOption<T extends string | number> {
++  value: T
++  label: string
++  /** Optional style for the option's text (e.g. a font preview). */
++  style?: CSSProperties
++}
++
++interface Props<T extends string | number> {
++  value: T
++  options: SelectOption<T>[]
++  onChange(value: T): void
++  /** Classes for the closed control; the list itself always uses the app's glass style. */
++  className?: string
++  id?: string
++  title?: string
++  'aria-label'?: string
++  disabled?: boolean
++}
++
++const MAX_LIST_HEIGHT = 288
++
++/**
++ * A dropdown drawn by the app instead of Windows, so the open list matches the glass theme.
++ * Works with the keyboard like a native one: arrows, Home/End, Enter or Space to pick, Escape to close,
++ * and typing a letter jumps to the next option starting with it.
++ */
++export function Select<T extends string | number>({ value, options, onChange, className, id, title, disabled, ...rest }: Props<T>) {
++  const listId = useId()
++  const buttonRef = useRef<HTMLButtonElement | null>(null)
++  const listRef = useRef<HTMLUListElement | null>(null)
++  const [open, setOpen] = useState(false)
++  const [active, setActive] = useState(0)
++  const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
++
++  const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value))
++  const selected = options[selectedIndex]
++
++  const position = () => {
++    const rect = buttonRef.current?.getBoundingClientRect()
++    if (!rect) return
++    const below = window.innerHeight - rect.bottom - 12
++    const above = rect.top - 12
++    const width = Math.max(rect.width, 180)
++    const left = Math.min(rect.left, window.innerWidth - width - 8)
++    // Opens downwards unless there's clearly more room above.
++    if (below >= Math.min(MAX_LIST_HEIGHT, 160) || below >= above) {
++      setPlace({ left, width, top: rect.bottom + 6, maxHeight: Math.min(MAX_LIST_HEIGHT, below) })
++    } else {
++      setPlace({ left, width, bottom: window.innerHeight - rect.top + 6, maxHeight: Math.min(MAX_LIST_HEIGHT, above) })
++    }
++  }
++
++  const openList = () => {
++    if (disabled) return
++    position()
++    setActive(selectedIndex)
++    setOpen(true)
++  }
++
++  const close = (refocus = true) => {
++    setOpen(false)
++    if (refocus) buttonRef.current?.focus()
++  }
++
++  const pick = (index: number) => {
++    const option = options[index]
++    if (option && option.value !== value) onChange(option.value)
++    close()
++  }
++
++  // Closes on a click outside, and when the page scrolls or resizes under it.
++  useEffect(() => {
++    if (!open) return
++    const onDown = (e: MouseEvent) => {
++      const target = e.target as Node
++      if (!listRef.current?.contains(target) && !buttonRef.current?.contains(target)) close(false)
++    }
++    const onMove = (e: Event) => {
++      if (!listRef.current?.contains(e.target as Node)) close(false)
++    }
++    document.addEventListener('mousedown', onDown, true)
++    window.addEventListener('resize', onMove)
++    window.addEventListener('scroll', onMove, true)
++    return () => {
++      document.removeEventListener('mousedown', onDown, true)
++      window.removeEventListener('resize', onMove)
++      window.removeEventListener('scroll', onMove, true)
++    }
++  }, [open])
++
++  // Keeps the highlighted option in view.
++  useLayoutEffect(() => {
++    if (!open) return
++    const item = listRef.current?.children[active] as HTMLElement | undefined
++    item?.scrollIntoView({ block: 'nearest' })
++  }, [open, active])
++
++  const onKeyDown = (e: KeyboardEvent) => {
++    if (disabled) return
++    const last = options.length - 1
++    if (!open) {
++      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
++        e.preventDefault()
++        openList()
++      }
++      return
++    }
++    switch (e.key) {
++      case 'ArrowDown':
++        setActive((a) => Math.min(last, a + 1))
++        break
++      case 'ArrowUp':
++        setActive((a) => Math.max(0, a - 1))
++        break
++      case 'Home':
++        setActive(0)
++        break
++      case 'End':
++        setActive(last)
++        break
++      case 'Enter':
++      case ' ':
++        pick(active)
++        break
++      case 'Escape':
++        close()
++        break
++      case 'Tab':
++        close(false)
++        return
++      default:
++        if (e.key.length === 1) {
++          const letter = e.key.toLowerCase()
++          const order = [...options.keys()].map((i) => (active + 1 + i) % options.length)
++          const next = order.find((i) => options[i].label.toLowerCase().startsWith(letter))
++          if (next !== undefined) setActive(next)
++        }
++        return
++    }
++    e.preventDefault()
++    // Escape here closes only the list, not a dialog around it.
++    e.stopPropagation()
++  }
++
++  return (
++    <>
++      <button
++        ref={buttonRef}
++        type="button"
++        id={id}
++        title={title}
++        disabled={disabled}
++        aria-label={rest['aria-label']}
++        aria-haspopup="listbox"
++        aria-expanded={open}
++        aria-controls={open ? listId : undefined}
++        onClick={() => (open ? close() : openList())}
++        onKeyDown={onKeyDown}
++        className={`flex items-center justify-between gap-2 text-left disabled:opacity-50 ${className ?? ''}`}
++      >
++        <span className="min-w-0 truncate" style={selected?.style}>
++          {selected?.label ?? ''}
++        </span>
++        <ChevronDown size={14} aria-hidden className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
++      </button>
++      {open &&
++        place &&
++        createPortal(
++          <ul
++            ref={listRef}
++            id={listId}
++            role="listbox"
++            aria-activedescendant={`${listId}-${active}`}
++            tabIndex={-1}
++            onMouseDown={(e) => e.preventDefault()}
++            style={{ left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight }}
++            className="glass-float fixed z-[60] overflow-y-auto rounded-2xl border bg-[rgba(24,36,60,0.82)] p-1.5 text-sm text-ink shadow-dialog"
++          >
++            {options.map((option, i) => {
++              const isSelected = i === selectedIndex
++              return (
++                <li
++                  key={String(option.value)}
++                  id={`${listId}-${i}`}
++                  role="option"
++                  aria-selected={isSelected}
++                  onMouseEnter={() => setActive(i)}
++                  onClick={() => pick(i)}
++                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 ${
++                    i === active ? 'bg-white/12' : ''
++                  } ${isSelected ? 'font-semibold' : ''}`}
++                >
++                  <span className="min-w-0 truncate" style={option.style}>
++                    {option.label}
++                  </span>
++                  {isSelected && <Check size={14} strokeWidth={2.5} aria-hidden className="shrink-0" />}
++                </li>
++              )
++            })}
++          </ul>,
++          document.body
++        )}
++    </>
++  )
++}
+diff --git a/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx b/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
+index e76169a..25fef8b 100644
+--- a/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
+@@ -4,6 +4,7 @@ import type { CaptionCue, CaptionOverrides, CaptionStyle, CaptionTemplate, ClipC
+ import { useApp } from '../../store'
+ import { AnalysisStatus } from '../AnalysisStatus'
+ import { captionTextStyle } from './CaptionOverlay'
++import { Select } from '../Select'
+ 
+ const TEMPLATE_INFO: Record<CaptionTemplate, { name: string; sample: string }> = {
+   bold_pop: { name: 'Bold pop', sample: 'Big bold words' },
+@@ -122,17 +123,12 @@ export function CaptionsPanel(props: Props) {
+         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
+           <label className="col-span-2 flex flex-col gap-1">
+             <span className="text-muted">Font</span>
+-            <select
++            <Select
+               value={style.font}
+-              onChange={(e) => save({ ...overrides, font: e.target.value })}
++              onChange={(font) => save({ ...overrides, font })}
+               className="rounded-md border border-line bg-panel-2 px-2 py-1.5 outline-none focus:border-accent"
+-            >
+-              {templates.fonts.map((f) => (
+-                <option key={f} value={f} style={{ fontFamily: f }}>
+-                  {f}
+-                </option>
+-              ))}
+-            </select>
++              options={templates.fonts.map((f) => ({ value: f, label: f, style: { fontFamily: f } }))}
++            />
+           </label>
+           <label className="col-span-2 flex flex-col gap-1">
+             <span className="flex justify-between text-muted">
+@@ -204,18 +200,13 @@ export function CaptionsPanel(props: Props) {
+           <div className="mt-2 rounded-md border border-line p-3 text-xs">
+             <p className="text-muted">Captions come from the speech in the video, which hasn’t been transcribed yet.</p>
+             <div className="mt-2 flex gap-2">
+-              <select
++              <Select<SpeechModel>
+                 value={model}
+-                onChange={(e) => setModel(e.target.value as SpeechModel)}
++                onChange={setModel}
+                 className="rounded-md border border-line bg-panel-2 px-2 py-1.5 outline-none"
+                 title="Accuracy (the model downloads the first time)"
+-              >
+-                {MODELS.map(([m, label]) => (
+-                  <option key={m} value={m}>
+-                    {label}
+-                  </option>
+-                ))}
+-              </select>
++                options={MODELS.map(([m, label]) => ({ value: m, label }))}
++              />
+               <button
+                 onClick={() => void transcribe(sourceId, model, null)}
+                 disabled={transcribing}
+diff --git a/apps/desktop/src/renderer/src/components/live/LiveView.tsx b/apps/desktop/src/renderer/src/components/live/LiveView.tsx
+index 3b2d5ec..9069280 100644
+--- a/apps/desktop/src/renderer/src/components/live/LiveView.tsx
++++ b/apps/desktop/src/renderer/src/components/live/LiveView.tsx
+@@ -6,6 +6,7 @@ import { describePrefs, loadPrefs, paramsFromPrefs } from '../../lib/autoClipPre
+ import { displayedExportBase } from '../../lib/exportFolder'
+ import { confirmAction } from '../../lib/confirm'
+ import { LivePlayer } from './LivePlayer'
++import { Select } from '../Select'
+ 
+ const QUALITIES: { key: RecordingQuality; label: string }[] = [
+   { key: 'source', label: 'Source' },
+@@ -129,18 +130,13 @@ function StartPanel() {
+       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs">
+         <label className="flex items-center gap-2 text-muted">
+           Save into
+-          <select
++          <Select<number>
+             value={chosen}
+-            onChange={(e) => setProjectId(Number(e.target.value))}
+-            className="h-9 rounded-full border border-white/15 bg-[rgba(6,12,26,0.6)] px-3 text-xs text-ink"
+-          >
+-            <option value={NEW_PROJECT}>A new project</option>
+-            {projects.map((p) => (
+-              <option key={p.id} value={p.id}>
+-                {p.name}
+-              </option>
+-            ))}
+-          </select>
++            onChange={setProjectId}
++            aria-label="Project to save the recording into"
++            className="h-9 min-w-[170px] rounded-full border border-white/15 bg-[rgba(6,12,26,0.6)] px-3.5 text-xs text-ink"
++            options={[{ value: NEW_PROJECT, label: 'A new project' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
++          />
+         </label>
+         <div role="radiogroup" aria-label="Quality" className="flex items-center gap-1 rounded-full bg-white/[0.07] p-1">
+           {QUALITIES.map((q) => (
+-- 
+2.43.0
+

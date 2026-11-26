@@ -1,0 +1,162 @@
+From b75ff58d4375f3f6d8fa164336deafecb01c83bd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 26 Nov 2026 20:57:52 +0600
+Subject: [PATCH 3/4] Lighter see-through glass: corner glow, faint panel
+ edges, frosted dialogs over a blurred app
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017BqxA78YwnHzMXEWJJA6VV
+---
+ .../src/renderer/src/components/Modal.tsx     |  8 ++--
+ .../src/renderer/src/components/Sidebar.tsx   |  2 +-
+ apps/desktop/src/renderer/src/index.css       | 44 +++++++++++++------
+ 3 files changed, 36 insertions(+), 18 deletions(-)
+
+diff --git a/apps/desktop/src/renderer/src/components/Modal.tsx b/apps/desktop/src/renderer/src/components/Modal.tsx
+index 824bc6a..f247391 100644
+--- a/apps/desktop/src/renderer/src/components/Modal.tsx
++++ b/apps/desktop/src/renderer/src/components/Modal.tsx
+@@ -64,7 +64,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+   }
+ 
+   return (
+-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
++    <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
+       <div
+         ref={panelRef}
+         role="dialog"
+@@ -74,9 +74,9 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+         tabIndex={-1}
+         onMouseDown={(e) => e.stopPropagation()}
+         onKeyDown={onKeyDown}
+-        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-2xl border border-line bg-dialog shadow-dialog outline-none glass-float`}
++        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-[20px] border bg-dialog shadow-dialog outline-none glass-float`}
+       >
+-        <div className="flex items-center gap-3 border-b border-line bg-white/5 px-5 py-4">
++        <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4">
+           {icon && <div className="shrink-0">{icon}</div>}
+           <div className="min-w-0 flex-1">
+             <h2 id={titleId} className="text-lg font-semibold">
+@@ -98,7 +98,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+           </button>
+         </div>
+         {children}
+-        {footer && <div className="flex items-center justify-between gap-3 border-t border-dashed border-white/15 px-5 py-3">{footer}</div>}
++        {footer && <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] px-5 py-3">{footer}</div>}
+       </div>
+     </div>
+   )
+diff --git a/apps/desktop/src/renderer/src/components/Sidebar.tsx b/apps/desktop/src/renderer/src/components/Sidebar.tsx
+index c7bc697..bdfa197 100644
+--- a/apps/desktop/src/renderer/src/components/Sidebar.tsx
++++ b/apps/desktop/src/renderer/src/components/Sidebar.tsx
+@@ -37,7 +37,7 @@ export function Sidebar() {
+   return (
+     <nav
+       aria-label="Main"
+-      className="glass-float fixed top-3.5 bottom-3.5 left-3.5 z-40 flex w-[68px] flex-col items-center gap-2 rounded-[24px] border border-line bg-[rgba(30,44,74,0.55)] py-3.5 shadow-card"
++      className="glass-float fixed top-3.5 bottom-3.5 left-3.5 z-40 flex w-[68px] flex-col items-center gap-2 rounded-[24px] border bg-[rgba(255,255,255,0.04)] py-3.5 shadow-card"
+     >
+       <div className="mb-3 grid size-[42px] place-items-center rounded-full bg-accent text-on-accent" aria-hidden>
+         <Scissors size={19} strokeWidth={1.8} />
+diff --git a/apps/desktop/src/renderer/src/index.css b/apps/desktop/src/renderer/src/index.css
+index 076eee4..75af57a 100644
+--- a/apps/desktop/src/renderer/src/index.css
++++ b/apps/desktop/src/renderer/src/index.css
+@@ -15,13 +15,13 @@
+ 
+   /* Dark navy "liquid glass" theme (redesign, Nov 2026). */
+   --ui-canvas: #0a1120;
+-  --ui-surface: rgba(58, 82, 130, 0.20);
+-  --ui-elevated: rgba(255, 255, 255, 0.06);
++  --ui-surface: rgba(255, 255, 255, 0.035);
++  --ui-elevated: rgba(255, 255, 255, 0.05);
+   --ui-subtle: rgba(255, 255, 255, 0.06);
+   --ui-hover: rgba(255, 255, 255, 0.10);
+   --ui-ink: #eef2fb;
+   --ui-muted: #9aa7c2;
+-  --ui-line: rgba(255, 255, 255, 0.09);
++  --ui-line: rgba(255, 255, 255, 0.08);
+   --ui-control: rgba(255, 255, 255, 0.22);
+   --ui-primary: #f1f4fa;
+   --ui-primary-hover: #ffffff;
+@@ -41,11 +41,13 @@
+   --ui-danger-bg: rgba(229, 72, 77, 0.16);
+   --ui-danger-border: rgba(248, 113, 113, 0.55);
+   --ui-shadow: rgba(2, 6, 16, 0.45);
+-  --ui-overlay: rgba(4, 8, 18, 0.6);
++  --ui-overlay: rgba(4, 8, 18, 0.38);
+   --ui-video: #060a14;
+-  --ui-dialog: rgba(26, 40, 70, 0.78);
++  --ui-dialog: rgba(30, 44, 72, 0.55);
+   --ui-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+-  --ui-glass-blur: blur(24px) saturate(140%);
++  --ui-glass-blur: blur(28px) saturate(160%);
++  --ui-glass-edge: rgba(255, 255, 255, 0.13);
++  --ui-backdrop-blur: blur(12px) saturate(120%);
+ 
+   --font-interface: Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+   --font-code: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+@@ -64,9 +66,9 @@
+   --radius-large: 22px;
+   --radius-pill: 999px;
+ 
+-  --elevation-card: var(--ui-glass-highlight), 0 20px 50px var(--ui-shadow);
++  --elevation-card: var(--ui-glass-highlight), 0 10px 30px rgba(2, 6, 16, 0.25);
+   --elevation-floating: 0 4px 16px -2px var(--ui-shadow);
+-  --elevation-dialog: 0 16px 48px -12px var(--ui-shadow);
++  --elevation-dialog: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 60px -12px rgba(2, 6, 16, 0.6);
+ 
+   --motion-duration: 120ms;
+   --motion-standard-duration: 200ms;
+@@ -161,10 +163,11 @@ body,
+ 
+ body {
+   margin: 0;
+-  /* Two soft navy glows behind the glass panels. Painted once on the page, never animated. */
++  /* A strong navy glow in the top-right corner and a faint one bottom-left. The see-through panels pick
++     it up, which is what makes them read as glass. Painted once on the page, never animated. */
+   background:
+-    radial-gradient(760px 520px at 30% -180px, rgba(35, 65, 111, 0.55), transparent 70%),
+-    radial-gradient(620px 560px at calc(100% + 120px) calc(100% + 180px), rgba(26, 47, 85, 0.75), transparent 70%),
++    radial-gradient(1000px 760px at 100% 0%, rgba(48, 92, 176, 0.5), rgba(32, 62, 120, 0.18) 45%, transparent 72%),
++    radial-gradient(720px 620px at 0% 100%, rgba(26, 47, 85, 0.45), transparent 70%),
+     var(--ui-canvas);
+   background-attachment: fixed;
+   color: var(--ui-ink);
+@@ -213,15 +216,30 @@ kbd {
+ 
+ /* ---- Redesign: glass surfaces and pill controls ---- */
+ 
+-/* Panels are translucent and carry a top-edge sheen. Blur is reserved for floating layers
+-   (sidebar, dialogs) so the GPU isn't re-blurring large areas while video plays. */
++/* Panels are see-through with a faint edge and a soft sheen at the top, so the background glow shows
++   through them. They aren't blurred: blur is reserved for floating layers (sidebar, dialogs) so the GPU
++   isn't re-blurring large areas while video plays. */
++.bg-panel,
++.bg-panel-2 {
++  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 45%);
++}
++
+ .bg-panel {
+   box-shadow: var(--ui-glass-highlight);
+ }
+ 
++/* Floating glass (sidebar, dialogs): frosted, see-through, with a brighter edge. */
+ .glass-float {
+   backdrop-filter: var(--ui-glass-blur);
+   -webkit-backdrop-filter: var(--ui-glass-blur);
++  border-color: var(--ui-glass-edge);
++  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015) 55%);
++}
++
++/* Behind a dialog, the whole app is blurred and dimmed. Only while a dialog is open. */
++.modal-backdrop {
++  backdrop-filter: var(--ui-backdrop-blur);
++  -webkit-backdrop-filter: var(--ui-backdrop-blur);
+ }
+ 
+ /* Buttons and links styled as buttons are pills. Rows and tiles that happen to be buttons opt out
+-- 
+2.43.0
+

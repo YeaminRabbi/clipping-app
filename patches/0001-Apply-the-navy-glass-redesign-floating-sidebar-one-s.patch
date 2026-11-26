@@ -1,0 +1,1672 @@
+From ec6a31d124260de7bf410470fc5669d6ba894827 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 22:47:38 +0600
+Subject: [PATCH 1/4] Apply the navy glass redesign: floating sidebar, one-step
+ new project, find clips when ready, Settings screen
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017BqxA78YwnHzMXEWJJA6VV
+---
+ REDESIGN_NOTES.md                             |  19 ++
+ apps/desktop/src/renderer/src/App.tsx         | 109 +++++-----
+ .../src/components/AutoClipDialog.tsx         |  26 +--
+ .../renderer/src/components/ConfirmDialog.tsx |   4 +-
+ .../renderer/src/components/ExportDialog.tsx  |   5 +-
+ .../renderer/src/components/ExportsPanel.tsx  |   2 +-
+ .../renderer/src/components/ImportPanel.tsx   |   4 +-
+ .../src/renderer/src/components/Modal.tsx     |  10 +-
+ .../src/components/NewProjectDialog.tsx       | 195 ++++++++++++++++++
+ .../renderer/src/components/ProjectView.tsx   |  20 +-
+ .../src/renderer/src/components/Projects.tsx  | 122 +++++------
+ .../renderer/src/components/SettingsView.tsx  | 185 +++++++++++++++++
+ .../src/renderer/src/components/Sidebar.tsx   |  55 +++++
+ .../renderer/src/components/SourceCard.tsx    |  23 ++-
+ .../renderer/src/components/SystemCheck.tsx   |   2 +-
+ .../renderer/src/components/UpdateBanner.tsx  |  12 +-
+ .../src/components/editor/CaptionsPanel.tsx   |   4 +-
+ .../src/components/editor/ClipPanel.tsx       |   8 +-
+ .../src/components/editor/CropOverlay.tsx     |   2 +-
+ .../src/components/editor/EditorView.tsx      |   2 +-
+ .../renderer/src/components/editor/Stage.tsx  |   2 +-
+ .../src/components/editor/Timeline.tsx        |   2 +-
+ apps/desktop/src/renderer/src/index.css       | 109 +++++++---
+ .../src/renderer/src/lib/autoClipPrefs.ts     |  48 +++++
+ .../src/renderer/src/lib/exportFolder.ts      |  51 +++++
+ apps/desktop/src/renderer/src/store.ts        |  68 +++++-
+ 26 files changed, 879 insertions(+), 210 deletions(-)
+ create mode 100644 REDESIGN_NOTES.md
+ create mode 100644 apps/desktop/src/renderer/src/components/NewProjectDialog.tsx
+ create mode 100644 apps/desktop/src/renderer/src/components/SettingsView.tsx
+ create mode 100644 apps/desktop/src/renderer/src/components/Sidebar.tsx
+ create mode 100644 apps/desktop/src/renderer/src/lib/autoClipPrefs.ts
+ create mode 100644 apps/desktop/src/renderer/src/lib/exportFolder.ts
+
+diff --git a/REDESIGN_NOTES.md b/REDESIGN_NOTES.md
+new file mode 100644
+index 0000000..d79f39e
+--- /dev/null
++++ b/REDESIGN_NOTES.md
+@@ -0,0 +1,19 @@
++# Redesign notes (25 Nov 2026)
++
++This applies the approved navy glass redesign to the desktop app's interface. Engine code is unchanged.
++
++## What changed
++- **Theme** (`index.css`): navy glass colours, white pill buttons with dark text, rounder panels, and a soft background glow. Blur is used only on the sidebar and dialogs, and the video preview stays solid.
++- **Floating sidebar** (`components/Sidebar.tsx`): the logo, Projects (home), the engine status dot (opens Settings) and Settings. The old top bar is gone.
++- **Home** (`components/Projects.tsx`): project cards in a grid, plus a **New project** button.
++- **New project dialog** (`components/NewProjectDialog.tsx`): pick or drop videos; the project name fills in from the first file; **Find clips when the import finishes** is ticked by default; **Create project** opens the project with the videos importing. Dropping a video anywhere on the home screen opens this dialog.
++- **Find clips when ready:** while a video is importing, its row has a switch for this. When the import finishes, Find clips runs with your last Find clips settings. The queue lasts for the current session only: if you restart the app mid-import, start Find clips from the video's row.
++- **Settings** (`components/SettingsView.tsx`): System check (wide) next to Storage and Updates (narrow).
++  - **Storage:** the export location can be changed or reset (each project exports into its own folder there). App data and logs can be opened.
++  - **Updates:** check now, download, restart to update. Nothing installs without asking.
++- **Project page:** a breadcrumb and a larger title, with restyled panels and video rows.
++- **Dialogs:** glass frame with a header strip and dashed footer.
++
++## Not built yet (needs engine work first)
++- Moving or clearing app data and caches.
++- Gameplay mode, facecam detection, clip scores, the Transcript and Thumbnail editor tabs, and the Shorts package export (see SHORTS_DESIGN.md).
+diff --git a/apps/desktop/src/renderer/src/App.tsx b/apps/desktop/src/renderer/src/App.tsx
+index 1ef59d6..f69120c 100644
+--- a/apps/desktop/src/renderer/src/App.tsx
++++ b/apps/desktop/src/renderer/src/App.tsx
+@@ -1,11 +1,12 @@
+-import { CircleAlert, Scissors, X } from 'lucide-react'
+-import { useEffect } from 'react'
++import { CircleAlert, X } from 'lucide-react'
++import { useEffect, useState, type DragEvent } from 'react'
+ import { useApp } from './store'
+-import { EngineBadge } from './components/EngineBadge'
++import { Sidebar } from './components/Sidebar'
+ import { UpdateBanner } from './components/UpdateBanner'
+-import { SystemCheck } from './components/SystemCheck'
+ import { Projects } from './components/Projects'
+ import { ProjectView } from './components/ProjectView'
++import { SettingsView } from './components/SettingsView'
++import { NewProjectDialog } from './components/NewProjectDialog'
+ import { EditorView } from './components/editor/EditorView'
+ import { ExportDialog } from './components/ExportDialog'
+ import { AutoClipDialog } from './components/AutoClipDialog'
+@@ -15,59 +16,75 @@ export default function App() {
+   const init = useApp((s) => s.init)
+   const error = useApp((s) => s.error)
+   const setError = useApp((s) => s.setError)
++  const ready = useApp((s) => s.engine.state === 'ready')
++  const settingsOpen = useApp((s) => s.settingsOpen)
+   const projectOpen = useApp((s) => s.openProjectId !== null)
+   const editorOpen = useApp((s) => s.editorSourceId !== null)
+   const exportDialogOpen = useApp((s) => s.exportDialog !== null)
+   const autoClipOpen = useApp((s) => s.autoClipDialog !== null)
++  // New project dialog: null when closed, otherwise the files it starts with (dropped or none).
++  const [newProject, setNewProject] = useState<string[] | null>(null)
+ 
+   useEffect(() => init(), [init])
+ 
++  const onHome = !settingsOpen && !projectOpen
++
++  // On the projects home, a video dropped anywhere starts a new project with it.
++  const onDragOver = (e: DragEvent) => {
++    if (onHome && e.dataTransfer.types.includes('Files')) e.preventDefault()
++  }
++  const onDrop = (e: DragEvent) => {
++    if (!onHome) return
++    e.preventDefault()
++    if (!ready) return
++    const paths = [...e.dataTransfer.files].map((f) => window.clipping.files.pathFor(f)).filter(Boolean)
++    if (paths.length) setNewProject(paths)
++  }
++
++  const view = settingsOpen ? (
++    <main className="min-h-0 flex-1 overflow-auto">
++      <SettingsView />
++    </main>
++  ) : editorOpen ? (
++    <main className="min-h-0 flex-1">
++      <EditorView />
++    </main>
++  ) : projectOpen ? (
++    <main className="min-h-0 flex-1 overflow-auto">
++      <ProjectView />
++    </main>
++  ) : (
++    <main className="min-h-0 flex-1 overflow-auto">
++      <Projects onNewProject={() => setNewProject([])} />
++    </main>
++  )
++
+   return (
+-    <div className="flex h-full flex-col">
+-      <header className="flex items-center justify-between border-b border-line bg-panel px-6 py-3">
+-        <div className="flex items-center gap-3">
+-          <div className="grid size-8 place-items-center rounded-lg bg-accent">
+-            <Scissors size={16} aria-hidden />
+-          </div>
+-          <h1 className="text-base font-semibold">Clipping App</h1>
+-        </div>
+-        <div className="flex items-center gap-3">
+-          <UpdateBanner />
+-          <EngineBadge />
+-        </div>
+-      </header>
++    <div className="h-full" onDragOver={onDragOver} onDrop={onDrop}>
++      <Sidebar />
++      <div className="flex h-full flex-col pl-[96px]">
++        <UpdateBanner />
+ 
+-      {error && (
+-        <div role="alert" className="flex items-start justify-between gap-4 border-b border-red-900/60 bg-red-950/50 px-6 py-2 text-sm text-red-300">
+-          <span className="flex min-w-0 items-start gap-2 break-words">
+-            <CircleAlert size={16} aria-hidden className="mt-0.5 shrink-0" />
+-            {error}
+-          </span>
+-          <button
+-            onClick={() => setError(null)}
+-            className="inline-flex shrink-0 items-center gap-1 text-xs text-red-300/80 hover:text-red-200"
+-          >
+-            <X size={14} aria-hidden />
+-            Dismiss
+-          </button>
+-        </div>
+-      )}
++        {error && (
++          <div role="alert" className="mx-4 mt-3.5 flex items-start justify-between gap-4 rounded-2xl border border-danger-border bg-danger-subtle px-4 py-2 text-sm text-red-300">
++            <span className="flex min-w-0 items-start gap-2 break-words">
++              <CircleAlert size={16} aria-hidden className="mt-0.5 shrink-0" />
++              {error}
++            </span>
++            <button
++              onClick={() => setError(null)}
++              className="inline-flex shrink-0 items-center gap-1 text-xs text-red-300/80 hover:text-red-200"
++            >
++              <X size={14} aria-hidden />
++              Dismiss
++            </button>
++          </div>
++        )}
+ 
+-      {editorOpen ? (
+-        <main className="min-h-0 flex-1">
+-          <EditorView />
+-        </main>
+-      ) : projectOpen ? (
+-        <main className="flex-1 overflow-auto">
+-          <ProjectView />
+-        </main>
+-      ) : (
+-        <main className="grid flex-1 grid-cols-1 gap-6 overflow-auto p-6 lg:grid-cols-[1fr_360px]">
+-          <Projects />
+-          <SystemCheck />
+-        </main>
+-      )}
++        {view}
++      </div>
+ 
++      {newProject !== null && <NewProjectDialog initialPaths={newProject} onClose={() => setNewProject(null)} />}
+       {exportDialogOpen && <ExportDialog />}
+       {autoClipOpen && <AutoClipDialog />}
+       <ConfirmDialogHost />
+diff --git a/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx b/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
+index ede4892..04ca645 100644
+--- a/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
++++ b/apps/desktop/src/renderer/src/components/AutoClipDialog.tsx
+@@ -1,11 +1,10 @@
+ import { LoaderCircle, Sparkles } from 'lucide-react'
+ import { useEffect, useState, type ReactNode } from 'react'
+ import type { AnalysisMode, AnalyzeParams, SpeechModel } from '../lib/api'
++import { PREFS_KEY, loadPrefs, type Prefs } from '../lib/autoClipPrefs'
+ import { useApp } from '../store'
+ import { Modal } from './Modal'
+ 
+-const PREFS_KEY = 'clipping.autoClipPrefs'
+-
+ const MODES: { key: AnalysisMode; title: string; text: string }[] = [
+   { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Picks complete thoughts with strong openings.' },
+   { key: 'action', title: 'Action', text: 'Gaming, sports, vlogs. Picks loud, fast-moving moments.' },
+@@ -39,27 +38,6 @@ const LANGUAGES: [string, string][] = [
+   ['zh', 'Chinese']
+ ]
+ 
+-interface Prefs {
+-  mode: AnalysisMode
+-  auto: boolean
+-  count: number
+-  min: number
+-  max: number
+-  model: SpeechModel
+-  language: string
+-}
+-
+-const DEFAULT_PREFS: Prefs = { mode: 'talking', auto: true, count: 5, min: 30, max: 60, model: 'base', language: '' }
+-
+-function loadPrefs(): Prefs {
+-  try {
+-    const raw = localStorage.getItem(PREFS_KEY)
+-    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : DEFAULT_PREFS
+-  } catch {
+-    return DEFAULT_PREFS
+-  }
+-}
+-
+ const toClock = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+ 
+ /** "1:05" or "65" -> 65000 ms; null if unreadable. */
+@@ -165,7 +143,7 @@ export function AutoClipDialog() {
+             <button
+               onClick={() => void submit()}
+               disabled={busy || problem !== null}
+-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
++              className="inline-flex items-center gap-2 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+             >
+               {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Sparkles size={16} />}
+               {busy ? 'Starting' : 'Find clips'}
+diff --git a/apps/desktop/src/renderer/src/components/ConfirmDialog.tsx b/apps/desktop/src/renderer/src/components/ConfirmDialog.tsx
+index 2d5aab0..8d46bfe 100644
+--- a/apps/desktop/src/renderer/src/components/ConfirmDialog.tsx
++++ b/apps/desktop/src/renderer/src/components/ConfirmDialog.tsx
+@@ -34,8 +34,8 @@ export function ConfirmDialogHost() {
+           <button
+             data-autofocus={!pending.danger || undefined}
+             onClick={() => answer(true)}
+-            className={`rounded-md px-4 py-2 text-sm font-medium text-white ${
+-              pending.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-accent hover:bg-accent-hover'
++            className={`rounded-md px-4 py-2 text-sm font-medium ${
++              pending.danger ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-accent text-on-accent hover:bg-accent-hover'
+             }`}
+           >
+             {pending.confirmLabel ?? 'Confirm'}
+diff --git a/apps/desktop/src/renderer/src/components/ExportDialog.tsx b/apps/desktop/src/renderer/src/components/ExportDialog.tsx
+index 81bc2ac..7e9c7ca 100644
+--- a/apps/desktop/src/renderer/src/components/ExportDialog.tsx
++++ b/apps/desktop/src/renderer/src/components/ExportDialog.tsx
+@@ -5,6 +5,7 @@ import { ASPECTS } from '../lib/aspects'
+ import { shortDuration } from '../lib/time'
+ import { useApp } from '../store'
+ import { Modal } from './Modal'
++import { exportDirFor } from '../lib/exportFolder'
+ 
+ const PRESET_STORAGE_KEY = 'clipping.exportPreset'
+ const DEFAULT_TEMPLATE = '{project}_{index}_{title}_{ratio}'
+@@ -70,7 +71,7 @@ export function ExportDialog() {
+ 
+   useEffect(() => {
+     if (!preset.output_dir && project) {
+-      void window.clipping.files.defaultExportDir(project.name).then((dir) => setPreset((p) => ({ ...p, output_dir: dir })))
++      void exportDirFor(project.name).then((dir) => setPreset((p) => ({ ...p, output_dir: dir })))
+     }
+   }, [preset.output_dir, project])
+ 
+@@ -142,7 +143,7 @@ export function ExportDialog() {
+             <button
+               onClick={() => void submit()}
+               disabled={busy || total === 0 || !preset.output_dir || !preset.name_template.trim()}
+-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
++              className="inline-flex items-center gap-2 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+             >
+               {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}
+               {busy ? 'Starting' : `Export ${total || ''}`}
+diff --git a/apps/desktop/src/renderer/src/components/ExportsPanel.tsx b/apps/desktop/src/renderer/src/components/ExportsPanel.tsx
+index c744458..c9dac45 100644
+--- a/apps/desktop/src/renderer/src/components/ExportsPanel.tsx
++++ b/apps/desktop/src/renderer/src/components/ExportsPanel.tsx
+@@ -32,7 +32,7 @@ export function ExportsPanel() {
+   const folder = done[0]?.output_path?.replace(/[\\/][^\\/]+$/, '')
+ 
+   return (
+-    <section className="rounded-xl border border-line bg-panel p-5">
++    <section className="rounded-2xl border border-line bg-panel p-5 shadow-card">
+       <div className="flex items-center justify-between">
+         <h2 className="text-sm font-semibold">
+           Exports{' '}
+diff --git a/apps/desktop/src/renderer/src/components/ImportPanel.tsx b/apps/desktop/src/renderer/src/components/ImportPanel.tsx
+index 873811e..a094880 100644
+--- a/apps/desktop/src/renderer/src/components/ImportPanel.tsx
++++ b/apps/desktop/src/renderer/src/components/ImportPanel.tsx
+@@ -45,7 +45,7 @@ export function ImportPanel() {
+         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
+       }}
+       onDrop={onDrop}
+-      className={`rounded-xl border bg-panel p-5 transition-colors ${dragging ? 'border-accent bg-accent/10' : 'border-line'}`}
++      className={`rounded-2xl border bg-panel p-5 shadow-card transition-colors ${dragging ? 'border-accent bg-accent/10' : 'border-line'}`}
+     >
+       <h2 className="text-sm font-semibold">Import a video</h2>
+       <p className="mt-1 text-xs text-muted">
+@@ -64,7 +64,7 @@ export function ImportPanel() {
+         <button
+           type="submit"
+           disabled={!ready || busy || !url.trim()}
+-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
++          className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+         >
+           <Link size={16} aria-hidden />
+           Import link
+diff --git a/apps/desktop/src/renderer/src/components/Modal.tsx b/apps/desktop/src/renderer/src/components/Modal.tsx
+index cce1b74..824bc6a 100644
+--- a/apps/desktop/src/renderer/src/components/Modal.tsx
++++ b/apps/desktop/src/renderer/src/components/Modal.tsx
+@@ -64,7 +64,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+   }
+ 
+   return (
+-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onMouseDown={() => onCloseRef.current()}>
++    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
+       <div
+         ref={panelRef}
+         role="dialog"
+@@ -74,9 +74,9 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+         tabIndex={-1}
+         onMouseDown={(e) => e.stopPropagation()}
+         onKeyDown={onKeyDown}
+-        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-dialog outline-none`}
++        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-2xl border border-line bg-dialog shadow-dialog outline-none glass-float`}
+       >
+-        <div className="flex items-center gap-3 border-b border-line px-5 py-4">
++        <div className="flex items-center gap-3 border-b border-line bg-white/5 px-5 py-4">
+           {icon && <div className="shrink-0">{icon}</div>}
+           <div className="min-w-0 flex-1">
+             <h2 id={titleId} className="text-lg font-semibold">
+@@ -92,13 +92,13 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer,
+             data-modal-close
+             onClick={() => onCloseRef.current()}
+             aria-label="Close"
+-            className="-mr-1.5 grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-panel-2 hover:text-ink"
++            className="-mr-1.5 grid size-8 shrink-0 place-items-center rounded-full bg-white/8 text-muted hover:bg-white/15 hover:text-ink"
+           >
+             <X size={16} />
+           </button>
+         </div>
+         {children}
+-        {footer && <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">{footer}</div>}
++        {footer && <div className="flex items-center justify-between gap-3 border-t border-dashed border-white/15 px-5 py-3">{footer}</div>}
+       </div>
+     </div>
+   )
+diff --git a/apps/desktop/src/renderer/src/components/NewProjectDialog.tsx b/apps/desktop/src/renderer/src/components/NewProjectDialog.tsx
+new file mode 100644
+index 0000000..ac23f17
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/components/NewProjectDialog.tsx
+@@ -0,0 +1,195 @@
++import { Check, Film, LoaderCircle, Upload, X } from 'lucide-react'
++import { useState, type DragEvent } from 'react'
++import { useApp } from '../store'
++import { Modal } from './Modal'
++import { describePrefs, loadPrefs, paramsFromPrefs } from '../lib/autoClipPrefs'
++
++const AUTO_KEY = 'clipping.autoClipNewProjects'
++
++const fileName = (path: string): string => path.split(/[\\/]/).pop() ?? path
++
++/** "ranked-night_2026-11-20.mkv" -> "ranked night 2026-11-20" */
++function nameFromFile(path: string): string {
++  const base = fileName(path).replace(/\.[^.]+$/, '')
++  const spaced = base.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim()
++  return (spaced || 'New project').slice(0, 80)
++}
++
++function loadAutoChoice(): boolean {
++  try {
++    return localStorage.getItem(AUTO_KEY) !== 'false'
++  } catch {
++    return true
++  }
++}
++
++/**
++ * New project in one step: pick (or drop) the videos, name it (filled in from the first file),
++ * choose whether to find clips as soon as the import finishes, then Create opens the project with
++ * the videos importing.
++ */
++export function NewProjectDialog({ initialPaths, onClose }: { initialPaths: string[]; onClose(): void }) {
++  const { createProject, openProject, addFiles, setAutoClipOnReady } = useApp.getState()
++  const [paths, setPaths] = useState<string[]>(initialPaths)
++  const [name, setName] = useState(initialPaths.length ? nameFromFile(initialPaths[0]) : '')
++  const [nameTouched, setNameTouched] = useState(false)
++  const [autoClip, setAutoClip] = useState(loadAutoChoice)
++  const [dragging, setDragging] = useState(false)
++  const [busy, setBusy] = useState(false)
++  const prefs = loadPrefs()
++
++  const addPaths = (more: string[]) => {
++    if (!more.length) return
++    const next = [...paths, ...more.filter((p) => !paths.includes(p))]
++    setPaths(next)
++    if (!nameTouched && !name.trim()) setName(nameFromFile(next[0]))
++  }
++
++  const browse = async () => addPaths(await window.clipping.files.pickVideos())
++
++  const onDrop = (e: DragEvent) => {
++    e.preventDefault()
++    e.stopPropagation()
++    setDragging(false)
++    addPaths([...e.dataTransfer.files].map((f) => window.clipping.files.pathFor(f)).filter(Boolean))
++  }
++
++  const remove = (path: string) => setPaths(paths.filter((p) => p !== path))
++
++  const create = async () => {
++    const projectName = name.trim()
++    if (!projectName || paths.length === 0 || busy) return
++    setBusy(true)
++    try {
++      localStorage.setItem(AUTO_KEY, String(autoClip))
++    } catch {
++      // Remembering the choice is a convenience only.
++    }
++    const project = await createProject(projectName)
++    if (!project) {
++      setBusy(false)
++      return
++    }
++    await openProject(project.id)
++    onClose()
++    const added = await addFiles(paths)
++    if (autoClip) {
++      const params = paramsFromPrefs(prefs)
++      for (const source of added) setAutoClipOnReady(source.id, params)
++    }
++  }
++
++  return (
++    <Modal
++      title="New project"
++      size="sm"
++      onClose={onClose}
++      footer={
++        <>
++          <span />
++          <div className="flex gap-2">
++            <button onClick={onClose} className="rounded-md border border-control px-4 py-2 text-sm hover:bg-white/10">
++              Cancel
++            </button>
++            <button
++              onClick={() => void create()}
++              disabled={busy || paths.length === 0 || !name.trim()}
++              title={paths.length === 0 ? 'Add a video first' : undefined}
++              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:opacity-40"
++            >
++              {busy && <LoaderCircle size={15} className="animate-spin" aria-hidden />}
++              Create project
++            </button>
++          </div>
++        </>
++      }
++    >
++      <div className="flex flex-col gap-4 overflow-auto px-5 py-5">
++        <div
++          onDragOver={(e) => {
++            e.preventDefault()
++            e.stopPropagation()
++            setDragging(true)
++          }}
++          onDragLeave={(e) => {
++            if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
++          }}
++          onDrop={onDrop}
++        >
++          {paths.length === 0 ? (
++            <button
++              onClick={() => void browse()}
++              data-autofocus
++              className={`not-pill flex h-40 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-sm transition-colors ${
++                dragging ? 'border-white/60 bg-white/10' : 'border-[rgba(160,180,220,0.45)] bg-white/[0.03] hover:bg-white/[0.06]'
++              }`}
++            >
++              <span className="grid size-11 place-items-center rounded-full bg-accent text-on-accent">
++                <Upload size={19} strokeWidth={1.8} aria-hidden />
++              </span>
++              <span className="font-semibold">Drop a video here or choose a file</span>
++              <span className="text-xs text-muted">You can add more videos to the project later</span>
++            </button>
++          ) : (
++            <div className={`flex flex-col gap-1.5 rounded-2xl border border-dashed p-2 ${dragging ? 'border-white/60 bg-white/10' : 'border-[rgba(160,180,220,0.35)]'}`}>
++              {paths.map((path) => (
++                <div key={path} className="flex items-center gap-3 rounded-xl px-2 py-1.5">
++                  <Film size={18} strokeWidth={1.6} className="shrink-0 text-muted" aria-hidden />
++                  <span className="min-w-0 flex-1 truncate text-sm" title={path}>
++                    {fileName(path)}
++                  </span>
++                  <button
++                    onClick={() => remove(path)}
++                    aria-label={`Remove ${fileName(path)}`}
++                    className="not-pill grid size-7 place-items-center rounded-full text-muted hover:bg-white/10 hover:text-ink"
++                  >
++                    <X size={14} aria-hidden />
++                  </button>
++                </div>
++              ))}
++              <button onClick={() => void browse()} className="self-start rounded-md px-2 py-1 text-xs text-muted hover:bg-white/10 hover:text-ink">
++                + Add another video
++              </button>
++            </div>
++          )}
++        </div>
++
++        <label className="flex flex-col gap-1.5 text-xs text-muted">
++          Project name
++          <input
++            value={name}
++            onChange={(e) => {
++              setName(e.target.value)
++              setNameTouched(true)
++            }}
++            onKeyDown={(e) => e.key === 'Enter' && void create()}
++            placeholder="Filled in from the video's name"
++            maxLength={120}
++            className="h-11 rounded-full border border-white/15 bg-[rgba(6,12,26,0.45)] px-4 text-sm text-ink outline-none placeholder:text-[#8794b0] focus:border-white/40"
++          />
++        </label>
++
++        <button
++          role="checkbox"
++          aria-checked={autoClip}
++          onClick={() => setAutoClip(!autoClip)}
++          className="not-pill flex items-start gap-3 rounded-2xl border border-line bg-white/[0.04] p-3.5 text-left hover:bg-white/[0.07]"
++        >
++          <span
++            className={`mt-px grid size-[22px] shrink-0 place-items-center rounded-full border-[1.5px] ${
++              autoClip ? 'border-accent bg-accent text-on-accent' : 'border-[#7b88a6]'
++            }`}
++          >
++            {autoClip && <Check size={13} strokeWidth={3} aria-hidden />}
++          </span>
++          <span className="flex flex-col gap-1">
++            <span className="text-sm font-semibold">Find clips when the import finishes</span>
++            <span className="text-xs leading-relaxed text-muted">
++              Uses your last Find clips settings: {describePrefs(prefs)}. You can change them from a video's Find clips button.
++            </span>
++          </span>
++        </button>
++      </div>
++    </Modal>
++  )
++}
+diff --git a/apps/desktop/src/renderer/src/components/ProjectView.tsx b/apps/desktop/src/renderer/src/components/ProjectView.tsx
+index 65b81ab..b7dd4b8 100644
+--- a/apps/desktop/src/renderer/src/components/ProjectView.tsx
++++ b/apps/desktop/src/renderer/src/components/ProjectView.tsx
+@@ -11,18 +11,20 @@ export function ProjectView() {
+   const { closeProject, openExportDialog } = useApp.getState()
+ 
+   return (
+-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+-      <div className="flex items-center gap-3">
+-        <button onClick={closeProject} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:bg-panel-2">
+-          <ArrowLeft size={14} aria-hidden />
+-          Projects
+-        </button>
+-        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{project?.name ?? 'Project'}</h2>
++    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
++      <div className="flex items-end gap-3">
++        <div className="min-w-0 flex-1">
++          <button onClick={closeProject} className="not-pill inline-flex items-center gap-1 text-xs text-muted hover:text-ink">
++            <ArrowLeft size={13} aria-hidden />
++            Projects
++          </button>
++          <h2 className="mt-1 truncate text-3xl font-semibold tracking-[-0.02em]">{project?.name ?? 'Project'}</h2>
++        </div>
+         <button
+           onClick={() => openExportDialog(clips.map((c) => c.id))}
+           disabled={clips.length === 0}
+           title={clips.length === 0 ? 'Open a video and make some clips first' : undefined}
+-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
++          className="inline-flex h-11 items-center gap-1.5 rounded-md bg-accent text-on-accent px-5 text-sm font-semibold hover:bg-accent-hover disabled:opacity-50"
+         >
+           <Download size={16} aria-hidden />
+           Export {clips.length > 0 ? `${clips.length} clip${clips.length === 1 ? '' : 's'}` : 'clips'}
+@@ -31,7 +33,7 @@ export function ProjectView() {
+ 
+       <ImportPanel />
+ 
+-      <section className="rounded-xl border border-line bg-panel p-5">
++      <section className="rounded-2xl border border-line bg-panel p-5 shadow-card">
+         <h2 className="text-sm font-semibold">
+           Sources <span className="font-normal text-muted">({sources.length})</span>
+         </h2>
+diff --git a/apps/desktop/src/renderer/src/components/Projects.tsx b/apps/desktop/src/renderer/src/components/Projects.tsx
+index aee0576..ff15db8 100644
+--- a/apps/desktop/src/renderer/src/components/Projects.tsx
++++ b/apps/desktop/src/renderer/src/components/Projects.tsx
+@@ -1,80 +1,72 @@
+-import { Plus, Trash2 } from 'lucide-react'
+-import { useState, type FormEvent } from 'react'
++import { Film, Plus, Trash2 } from 'lucide-react'
+ import { useApp } from '../store'
+ import { confirmAction } from '../lib/confirm'
+ 
+-export function Projects() {
++/** The projects home: a card per project and the New project button. */
++export function Projects({ onNewProject }: { onNewProject(): void }) {
+   const ready = useApp((s) => s.engine.state === 'ready')
+   const projects = useApp((s) => s.projects)
+-  const createProject = useApp((s) => s.createProject)
+   const deleteProject = useApp((s) => s.deleteProject)
+   const openProject = useApp((s) => s.openProject)
+-  const [name, setName] = useState('')
+-
+-  const submit = async (e: FormEvent) => {
+-    e.preventDefault()
+-    if (!name.trim()) return
+-    await createProject(name.trim())
+-    setName('')
+-  }
+ 
+   return (
+-    <section className="flex flex-col rounded-xl border border-line bg-panel p-5">
+-      <h2 className="text-sm font-semibold">Projects</h2>
+-      <p className="mt-1 text-xs text-muted">Each project holds one or more source videos and the clips made from them.</p>
+-
+-      <form onSubmit={submit} className="mt-4 flex gap-2">
+-        <input
+-          value={name}
+-          onChange={(e) => setName(e.target.value)}
+-          placeholder="New project name"
+-          disabled={!ready}
+-          className="flex-1 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent disabled:opacity-50"
+-        />
++    <div className="flex flex-col gap-6 px-8 py-7">
++      <div className="flex flex-wrap items-end justify-between gap-4">
++        <div>
++          <h1 className="text-3xl font-semibold tracking-[-0.02em]">Projects</h1>
++          <p className="mt-1 text-sm text-muted">
++            Each project holds your videos and the clips found in them. Drop a video anywhere to start a new one.
++          </p>
++        </div>
+         <button
+-          type="submit"
+-          disabled={!ready || !name.trim()}
+-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
++          onClick={onNewProject}
++          disabled={!ready}
++          className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:opacity-50"
+         >
+-          <Plus size={16} aria-hidden />
+-          Create
++          <Plus size={16} strokeWidth={2} aria-hidden />
++          New project
+         </button>
+-      </form>
++      </div>
+ 
+-      <ul className="mt-4 flex flex-col gap-2">
+-        {projects.length === 0 && (
+-          <li className="rounded-md border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+-            {ready ? 'No projects yet. Create one to get started.' : 'Waiting for the engine'}
+-          </li>
+-        )}
+-        {projects.map((p) => (
+-          <li key={p.id} className="flex items-center justify-between rounded-md border border-line bg-panel-2 hover:border-accent/60">
+-            <button onClick={() => void openProject(p.id)} className="min-w-0 flex-1 px-4 py-3 text-left">
+-              <div className="truncate text-sm font-medium">{p.name}</div>
+-              <div className="text-xs text-muted">
+-                {p.source_count} source{p.source_count === 1 ? '' : 's'} · created{' '}
+-                {new Date(p.created_at).toLocaleString()}
+-              </div>
+-            </button>
+-            <button
+-              onClick={async () => {
+-                const ok = await confirmAction({
+-                  title: `Delete "${p.name}"?`,
+-                  message: 'Its videos, clips and export history are removed, and videos it downloaded from links are deleted. Files you imported from your computer and videos you exported are kept.',
+-                  confirmLabel: 'Delete project',
+-                  danger: true
+-                })
+-                if (ok) void deleteProject(p.id)
+-              }}
+-              aria-label={`Delete project ${p.name}`}
+-              title="Delete project"
+-              className="mr-3 grid size-7 place-items-center rounded-md text-muted border border-transparent hover:border-danger-border hover:bg-red-950/60 hover:text-red-300"
+-            >
+-              <Trash2 size={14} aria-hidden />
+-            </button>
+-          </li>
+-        ))}
+-      </ul>
+-    </section>
++      {projects.length === 0 ? (
++        <div className="rounded-2xl border border-dashed border-white/20 px-6 py-16 text-center text-sm text-muted">
++          {ready ? 'No projects yet. Click New project or drop a video here to get started.' : 'Waiting for the engine'}
++        </div>
++      ) : (
++        <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
++          {projects.map((p) => (
++            <li key={p.id} className="group relative flex flex-col rounded-2xl border border-line bg-panel p-2 shadow-card hover:border-white/25">
++              <button onClick={() => void openProject(p.id)} className="not-pill flex flex-col rounded-xl text-left">
++                <div className="grid h-28 place-items-center rounded-xl bg-[#15233f] text-[#6f7d99]">
++                  <Film size={28} strokeWidth={1.4} aria-hidden />
++                </div>
++                <div className="px-2 pt-3 pb-1.5">
++                  <div className="truncate text-sm font-semibold">{p.name}</div>
++                  <div className="mt-0.5 text-xs text-muted">
++                    {p.source_count} video{p.source_count === 1 ? '' : 's'} · created {new Date(p.created_at).toLocaleDateString()}
++                  </div>
++                </div>
++              </button>
++              <button
++                onClick={async () => {
++                  const ok = await confirmAction({
++                    title: `Delete "${p.name}"?`,
++                    message: 'Its videos, clips and export history are removed, and videos it downloaded from links are deleted. Files you imported from your computer and videos you exported are kept.',
++                    confirmLabel: 'Delete project',
++                    danger: true
++                  })
++                  if (ok) void deleteProject(p.id)
++                }}
++                aria-label={`Delete project ${p.name}`}
++                title="Delete project"
++                className="not-pill absolute top-4 right-4 grid size-8 place-items-center rounded-full bg-[rgba(10,17,32,0.7)] text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-red-950/80 hover:text-red-300"
++              >
++                <Trash2 size={14} aria-hidden />
++              </button>
++            </li>
++          ))}
++        </ul>
++      )}
++    </div>
+   )
+ }
+diff --git a/apps/desktop/src/renderer/src/components/SettingsView.tsx b/apps/desktop/src/renderer/src/components/SettingsView.tsx
+new file mode 100644
+index 0000000..ea15c59
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/components/SettingsView.tsx
+@@ -0,0 +1,185 @@
++import { FolderOpen, FolderSearch, RotateCcw, RefreshCw } from 'lucide-react'
++import { useEffect, useState, type ReactNode } from 'react'
++import type { AppInfo, UpdateStatus } from '../../../shared/types'
++import { useApp } from '../store'
++import { SystemCheck } from './SystemCheck'
++import { displayedExportBase, getExportBase, setExportBase } from '../lib/exportFolder'
++
++const dirOf = (path: string): string => path.replace(/[\\/][^\\/]*$/, '')
++
++function Panel({ title, children }: { title: string; children: ReactNode }) {
++  return (
++    <section className="overflow-hidden rounded-2xl border border-line bg-panel shadow-card">
++      <h2 className="bg-white/5 px-4 py-3 text-[15px] font-semibold">{title}</h2>
++      {children}
++    </section>
++  )
++}
++
++function IconButton({ label, onClick, disabled, children }: { label: string; onClick(): void; disabled?: boolean; children: ReactNode }) {
++  return (
++    <button
++      onClick={onClick}
++      disabled={disabled}
++      aria-label={label}
++      title={label}
++      className="not-pill grid size-[34px] shrink-0 place-items-center rounded-full border border-white/20 text-[#c8d1e4] hover:bg-white/10 hover:text-white disabled:opacity-40"
++    >
++      {children}
++    </button>
++  )
++}
++
++function StorageRow({ label, path, note, children }: { label: string; path: string | null; note?: ReactNode; children: ReactNode }) {
++  return (
++    <div className="flex flex-col gap-1.5 border-b border-dashed border-[rgba(160,180,220,0.18)] py-3 last:border-b-0">
++      <span className="text-sm font-semibold">{label}</span>
++      <div className="flex items-center gap-1.5">
++        <input
++          readOnly
++          value={path ?? '—'}
++          title={path ?? undefined}
++          aria-label={`${label} folder`}
++          className="h-[34px] min-w-0 flex-1 rounded-full border border-white/15 bg-[rgba(6,12,26,0.45)] px-3 text-xs text-[#dfe6f5] text-ellipsis outline-none"
++        />
++        {children}
++      </div>
++      {note && <span className="text-[11px] leading-relaxed text-muted">{note}</span>}
++    </div>
++  )
++}
++
++function Storage() {
++  const health = useApp((s) => s.health)
++  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
++  const [exportBase, setExportBaseState] = useState<string | null>(null)
++  const [customExports, setCustomExports] = useState(getExportBase() !== null)
++
++  useEffect(() => {
++    void window.clipping.app.info().then(setAppInfo)
++    void displayedExportBase().then(setExportBaseState)
++  }, [])
++
++  const dataDir = health ? dirOf(health.db.path) : null
++
++  const changeExports = async () => {
++    const dir = await window.clipping.files.pickFolder(exportBase ?? undefined)
++    if (!dir) return
++    setExportBase(dir)
++    setCustomExports(true)
++    setExportBaseState(dir)
++  }
++
++  const resetExports = async () => {
++    setExportBase(null)
++    setCustomExports(false)
++    setExportBaseState(await displayedExportBase())
++  }
++
++  return (
++    <Panel title="Storage">
++      <div className="px-4 pb-2">
++        <StorageRow
++          label="Exports"
++          path={exportBase}
++          note={customExports ? 'Each project exports into its own folder here. Earlier exports stay where they are.' : 'Each project exports into its own folder here.'}
++        >
++          <IconButton label="Change export location" onClick={() => void changeExports()}>
++            <FolderSearch size={16} strokeWidth={1.6} aria-hidden />
++          </IconButton>
++          {customExports && (
++            <IconButton label="Reset to the default location" onClick={() => void resetExports()}>
++              <RotateCcw size={15} strokeWidth={1.6} aria-hidden />
++            </IconButton>
++          )}
++        </StorageRow>
++        <StorageRow label="App data" path={dataDir} note="Projects, clips and the database. Moving or clearing it isn't available yet.">
++          <IconButton label="Open app data folder" onClick={() => dataDir && void window.clipping.files.openPath(dataDir)} disabled={!dataDir}>
++            <FolderOpen size={16} strokeWidth={1.6} aria-hidden />
++          </IconButton>
++        </StorageRow>
++        <StorageRow label="Logs" path={appInfo?.logsDir ?? null}>
++          <IconButton label="Open logs folder" onClick={() => void window.clipping.app.openLogs()}>
++            <FolderOpen size={16} strokeWidth={1.6} aria-hidden />
++          </IconButton>
++        </StorageRow>
++      </div>
++    </Panel>
++  )
++}
++
++const UPDATE_TEXT: Record<UpdateStatus['state'], string> = {
++  idle: 'Updates install only when you choose to.',
++  disabled: 'Update checks are off in this build.',
++  checking: 'Checking for updates…',
++  'up-to-date': 'You have the latest version.',
++  available: 'A new version is available.',
++  downloading: 'Downloading the update…',
++  ready: 'The update is ready. Restart to install it.',
++  error: 'The update check failed.'
++}
++
++function Updates() {
++  const [status, setStatus] = useState<UpdateStatus | null>(null)
++
++  useEffect(() => {
++    void window.clipping.app.getUpdateStatus().then(setStatus)
++    return window.clipping.app.onUpdateStatus(setStatus)
++  }, [])
++
++  const state = status?.state ?? 'idle'
++  const busy = state === 'checking' || state === 'downloading'
++
++  return (
++    <Panel title="Updates">
++      <div className="flex flex-col gap-3 px-4 py-3.5">
++        <p className="text-xs leading-relaxed text-muted">
++          {UPDATE_TEXT[state]}
++          {status?.version && (state === 'available' || state === 'ready') ? ` Version ${status.version}.` : ''}
++          {state === 'error' && status?.error ? ` ${status.error}` : ''} Nothing installs without asking you.
++        </p>
++        <div className="flex flex-wrap gap-2">
++          {state === 'available' ? (
++            <button onClick={() => void window.clipping.app.downloadUpdate()} className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-hover">
++              Download
++            </button>
++          ) : state === 'ready' ? (
++            <button onClick={() => void window.clipping.app.installUpdate()} className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-hover">
++              Restart to update
++            </button>
++          ) : (
++            <button
++              onClick={() => void window.clipping.app.checkForUpdates()}
++              disabled={busy || state === 'disabled'}
++              className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-4 py-1.5 text-sm hover:bg-white/10 disabled:opacity-50"
++            >
++              <RefreshCw size={14} aria-hidden className={busy ? 'animate-spin' : ''} />
++              Check now
++            </button>
++          )}
++        </div>
++      </div>
++    </Panel>
++  )
++}
++
++/** Settings: system check on the wide side, storage and updates in the narrow column. */
++export function SettingsView() {
++  return (
++    <div className="flex flex-col gap-6 px-8 py-7">
++      <div>
++        <h1 className="text-3xl font-semibold tracking-[-0.02em]">Settings</h1>
++        <p className="mt-1 text-sm text-muted">Check that everything the app needs is working, and where it keeps its files.</p>
++      </div>
++      <div className="flex flex-wrap items-start gap-4">
++        <div className="max-w-full min-w-[520px] flex-[4_1_0%]">
++          <SystemCheck />
++        </div>
++        <div className="flex max-w-full min-w-[280px] flex-[1_1_0%] flex-col gap-4">
++          <Storage />
++          <Updates />
++        </div>
++      </div>
++    </div>
++  )
++}
+diff --git a/apps/desktop/src/renderer/src/components/Sidebar.tsx b/apps/desktop/src/renderer/src/components/Sidebar.tsx
+new file mode 100644
+index 0000000..69e5681
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/components/Sidebar.tsx
+@@ -0,0 +1,55 @@
++import { House, Scissors, Settings } from 'lucide-react'
++import type { ReactNode } from 'react'
++import { useApp } from '../store'
++
++const ENGINE = {
++  starting: { label: 'Engine starting', dot: 'bg-amber-400 animate-pulse', glow: '' },
++  ready: { label: 'Engine ready', dot: 'bg-emerald-400', glow: 'shadow-[0_0_10px_#4ade80]' },
++  error: { label: 'Engine error', dot: 'bg-red-500', glow: 'shadow-[0_0_10px_#ef4444]' },
++  stopped: { label: 'Engine stopped', dot: 'bg-zinc-500', glow: '' }
++} as const
++
++function NavButton({ label, active, onClick, children }: { label: string; active: boolean; onClick(): void; children: ReactNode }) {
++  return (
++    <button
++      onClick={onClick}
++      aria-label={label}
++      aria-current={active ? 'page' : undefined}
++      title={label}
++      className={`not-pill grid size-11 place-items-center rounded-full transition-colors ${
++        active ? 'bg-white/12 text-white' : 'text-[#aeb9d1] hover:bg-white/10 hover:text-white'
++      }`}
++    >
++      {children}
++    </button>
++  )
++}
++
++/** The floating glass rail on the left: logo, Home, engine status and Settings. */
++export function Sidebar() {
++  const settingsOpen = useApp((s) => s.settingsOpen)
++  const engineState = useApp((s) => s.engine.state)
++  const { goHome, openSettings } = useApp.getState()
++  const engine = ENGINE[engineState]
++
++  return (
++    <nav
++      aria-label="Main"
++      className="glass-float fixed top-3.5 bottom-3.5 left-3.5 z-40 flex w-[68px] flex-col items-center gap-2 rounded-[24px] border border-line bg-[rgba(30,44,74,0.55)] py-3.5 shadow-card"
++    >
++      <div className="mb-3 grid size-[42px] place-items-center rounded-full bg-accent text-on-accent" aria-hidden>
++        <Scissors size={19} strokeWidth={1.8} />
++      </div>
++      <NavButton label="Projects" active={!settingsOpen} onClick={goHome}>
++        <House size={20} strokeWidth={1.6} aria-hidden />
++      </NavButton>
++      <div className="flex-1" />
++      <NavButton label={`${engine.label}: open system check`} active={false} onClick={openSettings}>
++        <span className={`size-2.5 rounded-full ${engine.dot} ${engine.glow}`} aria-hidden />
++      </NavButton>
++      <NavButton label="Settings" active={settingsOpen} onClick={openSettings}>
++        <Settings size={20} strokeWidth={1.6} aria-hidden />
++      </NavButton>
++    </nav>
++  )
++}
+diff --git a/apps/desktop/src/renderer/src/components/SourceCard.tsx b/apps/desktop/src/renderer/src/components/SourceCard.tsx
+index ede38bd..9bff809 100644
+--- a/apps/desktop/src/renderer/src/components/SourceCard.tsx
++++ b/apps/desktop/src/renderer/src/components/SourceCard.tsx
+@@ -1,9 +1,10 @@
+-import { LoaderCircle, RotateCcw, Scissors, Sparkles, Trash2, X } from 'lucide-react'
++import { Check, LoaderCircle, RotateCcw, Scissors, Sparkles, Trash2, X } from 'lucide-react'
+ import { ACTIVE_STATUSES, type Source } from '../lib/api'
+ import { formatBytes, formatDuration, formatFps, formatResolution } from '../lib/format'
+ import { useApp } from '../store'
+ import { confirmAction } from '../lib/confirm'
+ import { AnalysisStatus } from './AnalysisStatus'
++import { describePrefs, loadPrefs, paramsFromPrefs } from '../lib/autoClipPrefs'
+ 
+ const STAGE_LABELS: Record<Source['status'], string> = {
+   queued: 'Waiting to start',
+@@ -27,6 +28,8 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
+   const openEditor = useApp((s) => s.openEditor)
+   const openAutoClipDialog = useApp((s) => s.openAutoClipDialog)
+   const analysing = useApp((s) => ['queued', 'running'].includes(s.analyses[source.id]?.status ?? ''))
++  const autoClipQueued = useApp((s) => source.id in s.autoClipOnReady)
++  const setAutoClipOnReady = useApp((s) => s.setAutoClipOnReady)
+ 
+   const active = ACTIVE_STATUSES.includes(source.status)
+   const percent = Math.round(source.progress * 100)
+@@ -34,11 +37,11 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
+   const name = displayName(source)
+ 
+   return (
+-    <li className="flex gap-4 rounded-lg border border-line bg-panel-2 p-3">
++    <li className="flex gap-4 rounded-2xl border border-line bg-panel-2 p-3">
+       <button
+         onClick={() => source.status === 'ready' && openEditor(source.id)}
+         disabled={source.status !== 'ready'}
+-        className="group relative aspect-video w-44 shrink-0 overflow-hidden rounded-md bg-black/50 enabled:cursor-pointer"
++        className="not-pill group relative aspect-video w-44 shrink-0 overflow-hidden rounded-xl bg-video enabled:cursor-pointer"
+         title={source.status === 'ready' ? 'Open in editor' : undefined}
+       >
+         {source.poster_url && client ? (
+@@ -82,7 +85,7 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
+                 </button>
+                 <button
+                   onClick={() => openEditor(source.id)}
+-                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
++                  className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-3 py-1 text-xs font-medium hover:bg-accent-hover"
+                 >
+                   <Scissors size={14} aria-hidden />
+                   {clipCount > 0 ? `Edit ${clipCount} clip${clipCount === 1 ? '' : 's'}` : 'Open editor'}
+@@ -135,6 +138,18 @@ export function SourceCard({ source, clipCount }: { source: Source; clipCount: n
+           )}
+           {active ? (
+             <>
++              <button
++                role="switch"
++                aria-checked={autoClipQueued}
++                onClick={() => setAutoClipOnReady(source.id, autoClipQueued ? null : paramsFromPrefs(loadPrefs()))}
++                title={autoClipQueued ? 'Clips will be found as soon as this import finishes' : `Find clips when ready (${describePrefs(loadPrefs())})`}
++                className="mb-2.5 inline-flex h-7 items-center gap-1.5 rounded-full border border-white/20 py-0 pr-3 pl-1 text-[11px] hover:bg-white/10"
++              >
++                <span className={`grid size-5 place-items-center rounded-full ${autoClipQueued ? 'bg-accent text-on-accent' : 'bg-white/12'}`}>
++                  {autoClipQueued && <Check size={11} strokeWidth={3} aria-hidden />}
++                </span>
++                Find clips when the import finishes
++              </button>
+               <div className="mb-1.5 flex justify-between text-xs text-muted">
+                 <span>{STAGE_LABELS[source.status]}</span>
+                 {showPercent && <span>{percent}%</span>}
+diff --git a/apps/desktop/src/renderer/src/components/SystemCheck.tsx b/apps/desktop/src/renderer/src/components/SystemCheck.tsx
+index bb0ac9c..99df34c 100644
+--- a/apps/desktop/src/renderer/src/components/SystemCheck.tsx
++++ b/apps/desktop/src/renderer/src/components/SystemCheck.tsx
+@@ -33,7 +33,7 @@ export function SystemCheck() {
+   const encoders = ff ? Object.keys(ff.hw_encoders) : []
+ 
+   return (
+-    <section className="h-fit rounded-xl border border-line bg-panel p-5">
++    <section className="h-fit rounded-2xl border border-line bg-panel p-5 shadow-card">
+       <div className="mb-2 flex items-center justify-between">
+         <h2 className="text-sm font-semibold">System check</h2>
+         <button
+diff --git a/apps/desktop/src/renderer/src/components/UpdateBanner.tsx b/apps/desktop/src/renderer/src/components/UpdateBanner.tsx
+index d91e8ff..62e25ff 100644
+--- a/apps/desktop/src/renderer/src/components/UpdateBanner.tsx
++++ b/apps/desktop/src/renderer/src/components/UpdateBanner.tsx
+@@ -11,25 +11,33 @@ export function UpdateBanner() {
+   }, [])
+ 
+   if (status?.state === 'downloading') {
+-    return <span className="text-xs text-muted">Downloading update {status.version} · {status.percent ?? 0}%</span>
++    return (
++      <div className="flex justify-end px-4 pt-3.5">
++        <span className="text-xs text-muted">Downloading update {status.version} · {status.percent ?? 0}%</span>
++      </div>
++    )
+   }
+   if (status?.state === 'available') {
+     return (
++      <div className="flex justify-end px-4 pt-3.5">
+       <div className="flex items-center gap-2 rounded-full border border-line bg-panel-2 py-1 pr-1 pl-3 text-xs text-muted">
+         Version {status.version} is available
+         <button onClick={() => void window.clipping.app.downloadUpdate()} className="rounded-full border border-line px-2.5 py-0.5 hover:bg-panel">
+           Download
+         </button>
+       </div>
++      </div>
+     )
+   }
+   if (status?.state !== 'ready') return null
+   return (
++    <div className="flex justify-end px-4 pt-3.5">
+     <div className="flex items-center gap-2 rounded-full border border-accent/50 bg-accent/15 py-1 pr-1 pl-3 text-xs">
+       Version {status.version} is ready
+-      <button onClick={() => void window.clipping.app.installUpdate()} className="rounded-full bg-accent px-2.5 py-0.5 font-medium hover:bg-accent-hover">
++      <button onClick={() => void window.clipping.app.installUpdate()} className="rounded-full bg-accent text-on-accent px-2.5 py-0.5 font-medium hover:bg-accent-hover">
+         Restart to update
+       </button>
+     </div>
++    </div>
+   )
+ }
+diff --git a/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx b/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
+index 4df72b3..e76169a 100644
+--- a/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/CaptionsPanel.tsx
+@@ -103,7 +103,7 @@ export function CaptionsPanel(props: Props) {
+               <button
+                 key={key}
+                 onClick={() => void setCaptionStyle(key, {})}
+-                className={`flex h-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-md border bg-black/50 px-1 ${selected ? 'border-accent' : 'border-line hover:border-white/30'}`}
++                className={`not-pill flex h-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border bg-black/50 px-1 ${selected ? 'border-accent' : 'border-line hover:border-white/30'}`}
+               >
+                 <span className="truncate" style={captionTextStyle({ ...t, size: t.size }, 300)}>
+                   {TEMPLATE_INFO[key].sample.split(' ').map((w, i) => (
+@@ -219,7 +219,7 @@ export function CaptionsPanel(props: Props) {
+               <button
+                 onClick={() => void transcribe(sourceId, model, null)}
+                 disabled={transcribing}
+-                className="flex-1 rounded-md bg-accent px-3 py-1.5 font-medium hover:bg-accent-hover disabled:opacity-50"
++                className="flex-1 rounded-md bg-accent text-on-accent px-3 py-1.5 font-medium hover:bg-accent-hover disabled:opacity-50"
+               >
+                 {transcribing ? 'Transcribing' : 'Transcribe speech'}
+               </button>
+diff --git a/apps/desktop/src/renderer/src/components/editor/ClipPanel.tsx b/apps/desktop/src/renderer/src/components/editor/ClipPanel.tsx
+index daa36e7..1cb470c 100644
+--- a/apps/desktop/src/renderer/src/components/editor/ClipPanel.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/ClipPanel.tsx
+@@ -140,7 +140,7 @@ function TightenSection({ selected, tighten, cutPlan, sourceId, onTighten }: Pro
+             <button
+               onClick={() => void transcribe(sourceId, 'base', null)}
+               disabled={transcribing}
+-              className="shrink-0 rounded bg-accent px-2 py-1 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
++              className="shrink-0 rounded bg-accent text-on-accent px-2 py-1 font-medium hover:bg-accent-hover disabled:opacity-50"
+             >
+               {transcribing ? 'Transcribing' : 'Transcribe'}
+             </button>
+@@ -284,7 +284,7 @@ export function ClipPanel(props: Props) {
+           </button>
+           <button
+             onClick={props.onAdd}
+-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
++            className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-2.5 py-1.5 text-xs font-medium hover:bg-accent-hover"
+             title="Add clip (N)"
+           >
+             <Plus size={14} aria-hidden />
+@@ -307,7 +307,7 @@ export function ClipPanel(props: Props) {
+           <li key={clip.id}>
+             <button
+               onClick={() => props.onSelect(clip.id === selected?.id ? null : clip.id)}
+-              className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left ${
++              className={`not-pill flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left ${
+                 clip.id === selected?.id ? 'bg-amber-400/15 ring-1 ring-amber-400/60' : 'hover:bg-panel-2'
+               }`}
+             >
+@@ -353,7 +353,7 @@ export function ClipPanel(props: Props) {
+                 key={a.key}
+                 onClick={() => props.onAspect(a.key)}
+                 title={a.label}
+-                className={`flex flex-col items-center gap-1 rounded-md border px-1 py-2 text-[10px] ${
++                className={`not-pill flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[10px] ${
+                   aspect === a.key ? 'border-accent bg-accent/15 text-white' : 'border-line text-muted hover:bg-panel-2'
+                 }`}
+               >
+diff --git a/apps/desktop/src/renderer/src/components/editor/CropOverlay.tsx b/apps/desktop/src/renderer/src/components/editor/CropOverlay.tsx
+index 30605ab..7a72ccd 100644
+--- a/apps/desktop/src/renderer/src/components/editor/CropOverlay.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/CropOverlay.tsx
+@@ -72,7 +72,7 @@ export function CropOverlay({ crop, frameW, frameH, targetRatio, srcAspect, edit
+       onPointerDown={begin(c)}
+       onPointerMove={move}
+       onPointerUp={end}
+-      className={`absolute size-3.5 rounded-sm border-2 border-white bg-accent ${cls}`}
++      className={`absolute size-3.5 rounded-sm border-2 border-white bg-on-accent ${cls}`}
+     />
+   )
+ 
+diff --git a/apps/desktop/src/renderer/src/components/editor/EditorView.tsx b/apps/desktop/src/renderer/src/components/editor/EditorView.tsx
+index 143c84e..27a7412 100644
+--- a/apps/desktop/src/renderer/src/components/editor/EditorView.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/EditorView.tsx
+@@ -439,7 +439,7 @@ export function EditorView() {
+         <button
+           onClick={() => openExportDialog(clips.map((c) => c.id))}
+           disabled={clips.length === 0}
+-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
++          className="inline-flex items-center gap-1.5 rounded-md bg-accent text-on-accent px-3 py-1.5 text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
+         >
+           <Download size={14} aria-hidden />
+           Export clips
+diff --git a/apps/desktop/src/renderer/src/components/editor/Stage.tsx b/apps/desktop/src/renderer/src/components/editor/Stage.tsx
+index 98cce3d..9d087e2 100644
+--- a/apps/desktop/src/renderer/src/components/editor/Stage.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/Stage.tsx
+@@ -100,7 +100,7 @@ export function Stage(props: Props) {
+   const solid = view === 'preview' && mode === 'fit' && fit.background !== 'blur'
+ 
+   return (
+-    <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center overflow-hidden bg-black">
++    <div ref={stageRef} className="video-surface relative grid min-h-0 flex-1 place-items-center overflow-hidden">
+       <div
+         className="relative overflow-hidden"
+         style={{ width: frame.w, height: frame.h, background: solid ? fit.background : undefined }}
+diff --git a/apps/desktop/src/renderer/src/components/editor/Timeline.tsx b/apps/desktop/src/renderer/src/components/editor/Timeline.tsx
+index 4c647ea..729dae7 100644
+--- a/apps/desktop/src/renderer/src/components/editor/Timeline.tsx
++++ b/apps/desktop/src/renderer/src/components/editor/Timeline.tsx
+@@ -340,7 +340,7 @@ export function Timeline(props: Props) {
+                   onPointerUp={selected ? onUp : undefined}
+                   title={selected ? 'Drag to move the clip' : clip.title}
+                   className={`absolute top-1 bottom-1 truncate rounded px-1.5 text-[11px] leading-[18px] ${
+-                    selected ? 'z-10 cursor-grab bg-amber-400 font-medium text-black' : 'cursor-pointer bg-accent/70 text-white hover:bg-accent'
++                    selected ? 'z-10 cursor-grab bg-amber-400 font-medium text-black' : 'cursor-pointer bg-accent-muted text-white hover:bg-[#4d6fae]'
+                   }`}
+                   style={{ left: xFor(shown.start), width: Math.max(4, xFor(shown.end) - xFor(shown.start)) }}
+                 >
+diff --git a/apps/desktop/src/renderer/src/index.css b/apps/desktop/src/renderer/src/index.css
+index ce174af..076eee4 100644
+--- a/apps/desktop/src/renderer/src/index.css
++++ b/apps/desktop/src/renderer/src/index.css
+@@ -13,33 +13,39 @@
+ :root {
+   color-scheme: dark;
+ 
+-  --ui-canvas: #0b0d12;
+-  --ui-surface: #13161e;
+-  --ui-elevated: #1a1e28;
+-  --ui-subtle: #1a1e28;
+-  --ui-hover: #262b38;
+-  --ui-ink: #e7eaf0;
+-  --ui-muted: #8a93a6;
+-  --ui-line: #262b38;
+-  --ui-control: #3b4252;
+-  --ui-primary: #7c5cff;
+-  --ui-primary-hover: #6a48f5;
+-  --ui-link: #a897ff;
+-  --ui-accent-bg: #221c3a;
+-  --ui-accent-border: #594395;
+-  --ui-focus: #a897ff;
+-  --ui-on-accent: #ffffff;
++  /* Dark navy "liquid glass" theme (redesign, Nov 2026). */
++  --ui-canvas: #0a1120;
++  --ui-surface: rgba(58, 82, 130, 0.20);
++  --ui-elevated: rgba(255, 255, 255, 0.06);
++  --ui-subtle: rgba(255, 255, 255, 0.06);
++  --ui-hover: rgba(255, 255, 255, 0.10);
++  --ui-ink: #eef2fb;
++  --ui-muted: #9aa7c2;
++  --ui-line: rgba(255, 255, 255, 0.09);
++  --ui-control: rgba(255, 255, 255, 0.22);
++  --ui-primary: #f1f4fa;
++  --ui-primary-hover: #ffffff;
++  --ui-link: #cfdcff;
++  --ui-accent-bg: rgba(255, 255, 255, 0.10);
++  --ui-accent-border: rgba(255, 255, 255, 0.35);
++  --ui-focus: #9cc2ff;
++  --ui-on-accent: #0a1120;
++  --ui-accent-muted: #3d5a92;
+   --ui-success: #86efac;
+-  --ui-success-bg: #052e16;
+-  --ui-success-border: #166534;
++  --ui-success-bg: rgba(74, 222, 128, 0.14);
++  --ui-success-border: rgba(74, 222, 128, 0.45);
+   --ui-warning: #fcd34d;
+-  --ui-warning-bg: #451a03;
+-  --ui-warning-border: #92400e;
++  --ui-warning-bg: rgba(252, 211, 77, 0.14);
++  --ui-warning-border: rgba(252, 211, 77, 0.45);
+   --ui-danger: #fca5a5;
+-  --ui-danger-bg: #450a0a;
+-  --ui-danger-border: #991b1b;
+-  --ui-shadow: #00000055;
+-  --ui-overlay: #00000099;
++  --ui-danger-bg: rgba(229, 72, 77, 0.16);
++  --ui-danger-border: rgba(248, 113, 113, 0.55);
++  --ui-shadow: rgba(2, 6, 16, 0.45);
++  --ui-overlay: rgba(4, 8, 18, 0.6);
++  --ui-video: #060a14;
++  --ui-dialog: rgba(26, 40, 70, 0.78);
++  --ui-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
++  --ui-glass-blur: blur(24px) saturate(140%);
+ 
+   --font-interface: Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+   --font-code: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+@@ -54,11 +60,11 @@
+ 
+   --radius-compact: 3px;
+   --radius-small: 6px;
+-  --radius-medium: 12px;
+-  --radius-large: 16px;
++  --radius-medium: 16px;
++  --radius-large: 22px;
+   --radius-pill: 999px;
+ 
+-  --elevation-card: 0 1px 2px var(--ui-shadow);
++  --elevation-card: var(--ui-glass-highlight), 0 20px 50px var(--ui-shadow);
+   --elevation-floating: 0 4px 16px -2px var(--ui-shadow);
+   --elevation-dialog: 0 16px 48px -12px var(--ui-shadow);
+ 
+@@ -97,6 +103,10 @@
+   --color-accent: var(--ui-primary);
+   --color-accent-hover: var(--ui-primary-hover);
+   --color-accent-subtle: var(--ui-accent-bg);
++  --color-on-accent: var(--ui-on-accent);
++  --color-accent-muted: var(--ui-accent-muted);
++  --color-video: var(--ui-video);
++  --color-dialog: var(--ui-dialog);
+   --color-ink: var(--ui-ink);
+   --color-link: var(--ui-link);
+   --color-control: var(--ui-control);
+@@ -151,7 +161,12 @@ body,
+ 
+ body {
+   margin: 0;
+-  background: var(--ui-canvas);
++  /* Two soft navy glows behind the glass panels. Painted once on the page, never animated. */
++  background:
++    radial-gradient(760px 520px at 30% -180px, rgba(35, 65, 111, 0.55), transparent 70%),
++    radial-gradient(620px 560px at calc(100% + 120px) calc(100% + 180px), rgba(26, 47, 85, 0.75), transparent 70%),
++    var(--ui-canvas);
++  background-attachment: fixed;
+   color: var(--ui-ink);
+   font-family: var(--font-interface);
+   -webkit-font-smoothing: antialiased;
+@@ -195,3 +210,41 @@ kbd {
+   border: 1px solid var(--ui-line);
+   border-radius: var(--radius-compact);
+ }
++
++/* ---- Redesign: glass surfaces and pill controls ---- */
++
++/* Panels are translucent and carry a top-edge sheen. Blur is reserved for floating layers
++   (sidebar, dialogs) so the GPU isn't re-blurring large areas while video plays. */
++.bg-panel {
++  box-shadow: var(--ui-glass-highlight);
++}
++
++.glass-float {
++  backdrop-filter: var(--ui-glass-blur);
++  -webkit-backdrop-filter: var(--ui-glass-blur);
++}
++
++/* Buttons and links styled as buttons are pills. Rows and tiles that happen to be buttons opt out
++   with .not-pill. */
++button.rounded-md:not(.not-pill),
++button.rounded:not(.not-pill),
++a.rounded-md:not(.not-pill) {
++  border-radius: var(--radius-pill);
++}
++
++input.rounded-md:not([type='checkbox']):not([type='radio']):not([type='range']),
++select.rounded-md {
++  border-radius: var(--radius-pill);
++}
++
++/* Native checkboxes, radios and sliders follow the white accent. */
++input[type='checkbox'],
++input[type='radio'],
++input[type='range'] {
++  accent-color: var(--ui-primary);
++}
++
++/* Video areas stay solid so footage colours read true. */
++.video-surface {
++  background: var(--ui-video);
++}
+diff --git a/apps/desktop/src/renderer/src/lib/autoClipPrefs.ts b/apps/desktop/src/renderer/src/lib/autoClipPrefs.ts
+new file mode 100644
+index 0000000..95189dd
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/lib/autoClipPrefs.ts
+@@ -0,0 +1,48 @@
++import type { AnalysisMode, AnalyzeParams, SpeechModel } from './api'
++
++/** Remembered Find clips settings, shared by the Find clips dialog and "find clips when ready". */
++export const PREFS_KEY = 'clipping.autoClipPrefs'
++
++export interface Prefs {
++  mode: AnalysisMode
++  auto: boolean
++  count: number
++  min: number
++  max: number
++  model: SpeechModel
++  language: string
++}
++
++export const DEFAULT_PREFS: Prefs = { mode: 'talking', auto: true, count: 5, min: 30, max: 60, model: 'base', language: '' }
++
++export function loadPrefs(): Prefs {
++  try {
++    const raw = localStorage.getItem(PREFS_KEY)
++    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : DEFAULT_PREFS
++  } catch {
++    return DEFAULT_PREFS
++  }
++}
++
++/** Settings for a whole-video run with the remembered preferences (no keywords, no range). */
++export function paramsFromPrefs(prefs: Prefs): AnalyzeParams {
++  return {
++    mode: prefs.mode,
++    clip_count: prefs.auto ? null : prefs.count,
++    min_seconds: prefs.min,
++    max_seconds: prefs.max,
++    keywords: [],
++    range_start_ms: null,
++    range_end_ms: null,
++    model: prefs.model,
++    language: prefs.language || null
++  }
++}
++
++const MODE_NAMES: Record<AnalysisMode, string> = { talking: 'Talking', action: 'Action', even: 'Even split' }
++
++/** One-line summary, e.g. "Action · 30–60 s · as many as fit". */
++export function describePrefs(prefs: Prefs): string {
++  const count = prefs.mode === 'even' || !prefs.auto ? `${prefs.count} clips` : 'as many as fit'
++  return `${MODE_NAMES[prefs.mode] ?? prefs.mode} · ${prefs.min}–${prefs.max} s · ${count}`
++}
+diff --git a/apps/desktop/src/renderer/src/lib/exportFolder.ts b/apps/desktop/src/renderer/src/lib/exportFolder.ts
+new file mode 100644
+index 0000000..b46e960
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/lib/exportFolder.ts
+@@ -0,0 +1,51 @@
++/**
++ * Where exports go by default. Settings can pick a base folder; each project then exports into
++ * <base>/<project name>. Without one, the app's own default (Videos/Clipping App/<project>) is used.
++ */
++const EXPORT_BASE_KEY = 'clipping.exportBase'
++const PRESET_STORAGE_KEY = 'clipping.exportPreset'
++
++export function getExportBase(): string | null {
++  try {
++    return localStorage.getItem(EXPORT_BASE_KEY) || null
++  } catch {
++    return null
++  }
++}
++
++/** Saves (or clears) the base folder, and forgets the last-used export folder so the new one applies. */
++export function setExportBase(dir: string | null): void {
++  try {
++    if (dir) localStorage.setItem(EXPORT_BASE_KEY, dir)
++    else localStorage.removeItem(EXPORT_BASE_KEY)
++    const raw = localStorage.getItem(PRESET_STORAGE_KEY)
++    if (raw) {
++      const preset = JSON.parse(raw) as Record<string, unknown>
++      delete preset.output_dir
++      localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(preset))
++    }
++  } catch {
++    // Remembering the folder is a convenience only.
++  }
++}
++
++/** Same clean-up the main process applies to project names used as folder names. */
++function safeFolderName(name: string): string {
++  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 80) || 'Untitled'
++}
++
++/** The default export folder for a project. */
++export async function exportDirFor(projectName: string): Promise<string> {
++  const base = getExportBase()
++  if (!base) return window.clipping.files.defaultExportDir(projectName)
++  const sep = base.includes('\\') ? '\\' : '/'
++  return `${base.replace(/[\\/]+$/, '')}${sep}${safeFolderName(projectName)}`
++}
++
++/** The base folder Settings shows: the chosen one, or the parent of the app's default. */
++export async function displayedExportBase(): Promise<string> {
++  const base = getExportBase()
++  if (base) return base
++  const sample = await window.clipping.files.defaultExportDir('x')
++  return sample.replace(/[\\/][^\\/]*$/, '')
++}
+diff --git a/apps/desktop/src/renderer/src/store.ts b/apps/desktop/src/renderer/src/store.ts
+index 475129d..2b9e2e0 100644
+--- a/apps/desktop/src/renderer/src/store.ts
++++ b/apps/desktop/src/renderer/src/store.ts
+@@ -18,7 +18,8 @@ import {
+   type FramingMode,
+   type Health,
+   type Project,
+-  type Source
++  type Source,
++  ACTIVE_STATUSES
+ } from './lib/api'
+ 
+ interface AppState {
+@@ -53,12 +54,20 @@ interface AppState {
+   clipDeletions: Record<number, number>
+   /** Source (and optional marked range) for the auto-clip dialog; null when it's closed. */
+   autoClipDialog: { sourceId: number; range: { start: number; end: number } | null } | null
++  /**
++   * Videos still importing that should get Find clips as soon as they're ready, with the settings
++   * to use. Kept for this session only: after a restart, start Find clips from the video's row.
++   */
++  autoClipOnReady: Record<number, AnalyzeParams>
++  /** The Settings screen is showing (replaces the home / project / editor view). */
++  settingsOpen: boolean
+ 
+   init(): () => void
+   restartEngine(): Promise<void>
+   refresh(): Promise<void>
+   setError(message: string | null): void
+-  createProject(name: string): Promise<void>
++  /** Resolves to the new project, or null if it couldn't be created. */
++  createProject(name: string): Promise<Project | null>
+   deleteProject(id: number): Promise<void>
+ 
+   openProject(id: number): Promise<void>
+@@ -67,7 +76,13 @@ interface AppState {
+   closeEditor(): void
+ 
+   addUrl(url: string): Promise<boolean>
+-  addFiles(paths: string[]): Promise<void>
++  /** Adds videos to the open project; resolves to the sources that were added. */
++  addFiles(paths: string[]): Promise<Source[]>
++  /** Find clips with these settings once the video finishes importing (null turns it off). */
++  setAutoClipOnReady(sourceId: number, params: AnalyzeParams | null): void
++  openSettings(): void
++  /** Back to the projects home: closes Settings, the editor and any open project. */
++  goHome(): void
+   cancelSource(id: number): Promise<void>
+   retrySource(id: number): Promise<void>
+   deleteSource(id: number): Promise<void>
+@@ -126,6 +141,7 @@ export const useApp = create<AppState>((set, get) => {
+     if (event === 'source') {
+       const source = data as Source
+       if (source.project_id === openProjectId) set({ sources: upsert(get().sources, source) })
++      autoClipIfReady(source)
+     } else if (event === 'clip') {
+       const clip = data as Clip
+       if (inOpenProject(clip.source_id)) set({ clips: upsert(get().clips, clip, false).sort(byStart) })
+@@ -178,6 +194,17 @@ export const useApp = create<AppState>((set, get) => {
+     if (client) void get().refresh()
+   }
+ 
++  /** Starts a queued "find clips when ready" run once its video has imported (or drops it if the import failed). */
++  const autoClipIfReady = (source: Source): void => {
++    const pending = get().autoClipOnReady
++    const params = pending[source.id]
++    if (!params || ACTIVE_STATUSES.includes(source.status)) return
++    const rest = { ...pending }
++    delete rest[source.id]
++    set({ autoClipOnReady: rest })
++    if (source.status === 'ready') void get().analyze(source.id, params)
++  }
++
+   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+ 
+   /**
+@@ -230,6 +257,8 @@ export const useApp = create<AppState>((set, get) => {
+     captionStyle: null,
+     captionsVersion: 0,
+     autoClipDialog: null,
++    autoClipOnReady: {},
++    settingsOpen: false,
+     clipDeletions: {},
+ 
+     init() {
+@@ -257,12 +286,12 @@ export const useApp = create<AppState>((set, get) => {
+ 
+     setError: (message) => set({ error: message }),
+ 
+-    createProject: async (name) => {
+-      await run(async (client) => {
++    createProject: (name) =>
++      run(async (client) => {
+         const project = await client.createProject(name)
+         set({ projects: [project, ...get().projects] })
+-      })
+-    },
++        return project
++      }),
+ 
+     deleteProject: async (id) => {
+       await run(async (client) => {
+@@ -272,7 +301,7 @@ export const useApp = create<AppState>((set, get) => {
+     },
+ 
+     openProject: async (id) => {
+-      set({ openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
++      set({ settingsOpen: false, openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
+       await run(loadProjectData)
+     },
+ 
+@@ -304,6 +333,7 @@ export const useApp = create<AppState>((set, get) => {
+       })) ?? false,
+ 
+     addFiles: async (paths) => {
++      const added: Source[] = []
+       await run(async (client) => {
+         const id = get().openProjectId
+         if (id === null) return
+@@ -311,13 +341,33 @@ export const useApp = create<AppState>((set, get) => {
+         // One at a time so each file gets its own error instead of failing the whole batch.
+         for (const path of paths) {
+           try {
+-            set({ sources: upsert(get().sources, await client.addSource(id, { path })) })
++            const source = await client.addSource(id, { path })
++            added.push(source)
++            set({ sources: upsert(get().sources, source) })
+           } catch (err) {
+             failures.push(errorMessage(err))
+           }
+         }
+         if (failures.length) throw new Error(failures.join(' · '))
+       })
++      return added
++    },
++
++    setAutoClipOnReady: (sourceId, params) => {
++      const rest = { ...get().autoClipOnReady }
++      if (params) rest[sourceId] = params
++      else delete rest[sourceId]
++      set({ autoClipOnReady: rest })
++      // The video may already have finished importing.
++      const source = get().sources.find((s) => s.id === sourceId)
++      if (params && source) autoClipIfReady(source)
++    },
++
++    openSettings: () => set({ settingsOpen: true, exportDialog: null, autoClipDialog: null }),
++
++    goHome: () => {
++      set({ settingsOpen: false })
++      if (get().openProjectId !== null) get().closeProject()
+     },
+ 
+     cancelSource: async (id) => {
+-- 
+2.43.0
+

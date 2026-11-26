@@ -64,7 +64,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
+    <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center bg-[var(--ui-overlay)] p-6" onMouseDown={() => onCloseRef.current()}>
       <div
         ref={panelRef}
         role="dialog"
@@ -74,9 +74,9 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
-        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-2xl border border-line bg-dialog shadow-dialog outline-none glass-float`}
+        className={`flex max-h-full w-full ${SIZES[size]} flex-col overflow-hidden rounded-[20px] border bg-dialog shadow-dialog outline-none glass-float`}
       >
-        <div className="flex items-center gap-3 border-b border-line bg-white/5 px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4">
           {icon && <div className="shrink-0">{icon}</div>}
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-lg font-semibold">
@@ -98,7 +98,7 @@ export function Modal({ title, description, icon, size = 'md', onClose, footer, 
           </button>
         </div>
         {children}
-        {footer && <div className="flex items-center justify-between gap-3 border-t border-dashed border-white/15 px-5 py-3">{footer}</div>}
+        {footer && <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] px-5 py-3">{footer}</div>}
       </div>
     </div>
   )

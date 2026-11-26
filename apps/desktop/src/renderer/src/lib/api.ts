@@ -289,6 +289,47 @@ export interface ExportJob {
   created_at: string
 }
 
+export type RecordingStatus =
+  | 'starting'
+  | 'recording'
+  | 'reconnecting'
+  | 'finishing'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+
+export type RecordingQuality = 'source' | '1080' | '720'
+
+/** A live stream being recorded (or recorded this session), from the engine's live recorder. */
+export interface Recording {
+  id: number
+  url: string
+  project_id: number
+  quality: RecordingQuality
+  output_dir: string
+  status: RecordingStatus
+  title: string | null
+  channel: string | null
+  started_at: string
+  elapsed_ms: number
+  size_bytes: number
+  free_bytes: number | null
+  /** Bumps when the recorder reconnects; the preview restarts with it. */
+  part: number
+  /** Marked moments, in ms from the start of the recording. Each becomes a clip once it's imported. */
+  marks: number[]
+  source_id: number | null
+  output_path: string | null
+  error: string | null
+  note: string | null
+  vcodec: string | null
+  /** Live preview playlist while recording (append the token with mediaUrl). */
+  preview_url: string | null
+}
+
+export const RECORDING_ACTIVE: RecordingStatus[] = ['starting', 'recording', 'reconnecting', 'finishing']
+
 export class EngineClient {
   constructor(
     private readonly baseUrl: string,
@@ -392,6 +433,30 @@ export class EngineClient {
 
   listAnalyses(projectId: number): Promise<Analysis[]> {
     return this.request(`/projects/${projectId}/analyses`)
+  }
+
+  listRecordings(): Promise<Recording[]> {
+    return this.request('/live/recordings')
+  }
+
+  startRecording(body: { url: string; project_id: number; quality: RecordingQuality; output_dir: string }): Promise<Recording> {
+    return this.request('/live/recordings', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  stopRecording(id: number): Promise<Recording> {
+    return this.request(`/live/recordings/${id}/stop`, { method: 'POST' })
+  }
+
+  saveRecording(id: number): Promise<Recording> {
+    return this.request(`/live/recordings/${id}/save`, { method: 'POST' })
+  }
+
+  markRecording(id: number): Promise<Recording> {
+    return this.request(`/live/recordings/${id}/marks`, { method: 'POST' })
+  }
+
+  discardRecording(id: number): Promise<void> {
+    return this.request(`/live/recordings/${id}`, { method: 'DELETE' })
   }
 
   cancelAnalysis(sourceId: number): Promise<Analysis> {

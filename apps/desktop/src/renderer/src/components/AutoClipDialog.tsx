@@ -4,6 +4,7 @@ import type { AnalysisMode, AnalyzeParams, SpeechModel } from '../lib/api'
 import { PREFS_KEY, loadPrefs, type Prefs } from '../lib/autoClipPrefs'
 import { useApp } from '../store'
 import { Modal } from './Modal'
+import { Select } from './Select'
 
 const MODES: { key: AnalysisMode; title: string; text: string }[] = [
   { key: 'talking', title: 'Talking', text: 'Podcasts, interviews, lectures. Picks complete thoughts with strong openings.' },
@@ -249,23 +250,21 @@ export function AutoClipDialog() {
               <div className="mt-3 grid grid-cols-2 gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs text-muted">Accuracy</span>
-                  <select value={prefs.model} onChange={(e) => set({ model: e.target.value as SpeechModel })} className={inputClass}>
-                    {MODELS.map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.label} ({m.size} download, once)
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={prefs.model}
+                    onChange={(model) => set({ model })}
+                    className={inputClass}
+                    options={MODELS.map((m) => ({ value: m.key, label: `${m.label} (${m.size} download, once)` }))}
+                  />
                 </label>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs text-muted">Language</span>
-                  <select value={prefs.language} onChange={(e) => set({ language: e.target.value })} className={inputClass}>
-                    {LANGUAGES.map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={prefs.language}
+                    onChange={(language) => set({ language })}
+                    className={inputClass}
+                    options={LANGUAGES.map(([code, name]) => ({ value: code, label: name }))}
+                  />
                 </label>
               </div>
               <p className="mt-2 text-[11px] text-muted">

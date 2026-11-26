@@ -19,6 +19,8 @@ import {
   type Health,
   type Project,
   type Source,
+  type Recording,
+  type RecordingQuality,
   ACTIVE_STATUSES
 } from './lib/api'
 
@@ -61,6 +63,12 @@ interface AppState {
   autoClipOnReady: Record<number, AnalyzeParams>
   /** The Settings screen is showing (replaces the home / project / editor view). */
   settingsOpen: boolean
+  /** The Live screen is showing. */
+  liveOpen: boolean
+  /** Live recordings the engine knows about, newest first. */
+  recordings: Recording[]
+  /** Recordings that should get Find clips once they're saved and imported, with the settings to use. */
+  liveAutoClip: Record<number, AnalyzeParams>
 
   init(): () => void
   restartEngine(): Promise<void>
@@ -81,6 +89,19 @@ interface AppState {
   /** Find clips with these settings once the video finishes importing (null turns it off). */
   setAutoClipOnReady(sourceId: number, params: AnalyzeParams | null): void
   openSettings(): void
+  openLive(): void
+  /** Starts recording a live stream; resolves to the recording, or null if it couldn't start. */
+  startRecording(
+    url: string,
+    projectId: number,
+    quality: RecordingQuality,
+    outputDir: string,
+    autoClip: AnalyzeParams | null
+  ): Promise<Recording | null>
+  stopRecording(id: number): Promise<void>
+  saveRecording(id: number): Promise<void>
+  markRecording(id: number): Promise<void>
+  discardRecording(id: number): Promise<void>
   /** Back to the projects home: closes Settings, the editor and any open project. */
   goHome(): void
   cancelSource(id: number): Promise<void>
@@ -142,6 +163,11 @@ export const useApp = create<AppState>((set, get) => {
       const source = data as Source
       if (source.project_id === openProjectId) set({ sources: upsert(get().sources, source) })
       autoClipIfReady(source)
+    } else if (event === 'recording') {
+      onRecording(data as Recording)
+    } else if (event === 'recording_removed') {
+      const { id } = data as { id: number }
+      set({ recordings: get().recordings.filter((r) => r.id !== id) })
     } else if (event === 'clip') {
       const clip = data as Clip
       if (inOpenProject(clip.source_id)) set({ clips: upsert(get().clips, clip, false).sort(byStart) })
@@ -205,6 +231,20 @@ export const useApp = create<AppState>((set, get) => {
     if (source.status === 'ready') void get().analyze(source.id, params)
   }
 
+  /** Keeps the list current, and hands a saved recording to "find clips when ready" if that was asked for. */
+  const onRecording = (rec: Recording): void => {
+    const others = get().recordings.filter((r) => r.id !== rec.id)
+    set({ recordings: [rec, ...others].sort((a, b) => b.id - a.id) })
+    const params = get().liveAutoClip[rec.id]
+    if (!params || !['done', 'failed', 'cancelled'].includes(rec.status)) return
+    const rest = { ...get().liveAutoClip }
+    delete rest[rec.id]
+    set({ liveAutoClip: rest })
+    if (rec.status === 'done' && rec.source_id !== null) get().setAutoClipOnReady(rec.source_id, params)
+    // A recording saved into the open project shows up there right away.
+    if (rec.source_id !== null && rec.project_id === get().openProjectId) void get().refresh()
+  }
+
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
   /**
@@ -259,6 +299,9 @@ export const useApp = create<AppState>((set, get) => {
     autoClipDialog: null,
     autoClipOnReady: {},
     settingsOpen: false,
+    liveOpen: false,
+    recordings: [],
+    liveAutoClip: {},
     clipDeletions: {},
 
     init() {
@@ -277,8 +320,12 @@ export const useApp = create<AppState>((set, get) => {
 
     refresh: async () => {
       await run(async (client) => {
-        const [health, projects] = await Promise.all([client.health(), client.listProjects()])
-        set({ health, projects })
+        const [health, projects, recordings] = await Promise.all([
+          client.health(),
+          client.listProjects(),
+          client.listRecordings().catch(() => [] as Recording[])
+        ])
+        set({ health, projects, recordings })
         // Picks up changes missed while the engine was restarting.
         await loadProjectData(client)
       })
@@ -301,7 +348,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     openProject: async (id) => {
-      set({ settingsOpen: false, openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
+      set({ settingsOpen: false, liveOpen: false, openProjectId: id, editorSourceId: null, sources: [], clips: [], exports: [], analyses: {}, exportBatches: [], captionStyle: null })
       await run(loadProjectData)
     },
 
@@ -363,10 +410,43 @@ export const useApp = create<AppState>((set, get) => {
       if (params && source) autoClipIfReady(source)
     },
 
-    openSettings: () => set({ settingsOpen: true, exportDialog: null, autoClipDialog: null }),
+    openSettings: () => set({ settingsOpen: true, liveOpen: false, exportDialog: null, autoClipDialog: null }),
+
+    openLive: () => set({ liveOpen: true, settingsOpen: false, exportDialog: null, autoClipDialog: null }),
+
+    startRecording: (url, projectId, quality, outputDir, autoClip) =>
+      run(async (client) => {
+        const rec = await client.startRecording({ url, project_id: projectId, quality, output_dir: outputDir })
+        if (autoClip) set({ liveAutoClip: { ...get().liveAutoClip, [rec.id]: autoClip } })
+        onRecording(rec)
+        return rec
+      }),
+
+    stopRecording: async (id) => {
+      await run(async (client) => onRecording(await client.stopRecording(id)))
+    },
+
+    saveRecording: async (id) => {
+      await run(async (client) => onRecording(await client.saveRecording(id)))
+    },
+
+    markRecording: async (id) => {
+      await run(async (client) => onRecording(await client.markRecording(id)))
+    },
+
+    discardRecording: async (id) => {
+      await run(async (client) => {
+        await client.discardRecording(id)
+        const rec = get().recordings.find((r) => r.id === id)
+        // A running one is removed by the engine once it has stopped; a finished one is gone now.
+        if (rec && !['starting', 'recording', 'reconnecting'].includes(rec.status)) {
+          set({ recordings: get().recordings.filter((r) => r.id !== id) })
+        }
+      })
+    },
 
     goHome: () => {
-      set({ settingsOpen: false })
+      set({ settingsOpen: false, liveOpen: false })
       if (get().openProjectId !== null) get().closeProject()
     },
 

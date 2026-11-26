@@ -12,12 +12,13 @@ from fastapi.responses import JSONResponse
 from . import __version__, ffmpeg
 from .analysis.manager import AnalysisManager
 from .analysis.transcribe import speech_device
-from .api import analysis, captions, clips, exports, projects, sources, ui
+from .api import analysis, captions, clips, exports, live, projects, sources, ui
 from .config import Settings, load_settings
 from .db import Database
 from .events import EventHub
 from .exports import ExportManager
 from .ingest import IngestManager
+from .live import LiveManager
 from .media import MediaError
 
 # Paths that must answer before the client has the token (none for now; health is protected too).
@@ -37,7 +38,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ingest.start()
         app.state.exports.start()
         app.state.analysis.start()
+        app.state.live.start()
         yield
+        app.state.live.shutdown()
         app.state.ingest.shutdown()
         app.state.exports.shutdown()
         app.state.analysis.shutdown()
@@ -49,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ingest = IngestManager(settings, app.state.db, app.state.events)
     app.state.exports = ExportManager(settings, app.state.db, app.state.events)
     app.state.analysis = AnalysisManager(settings, app.state.db, app.state.events, app.state.exports)
+    app.state.live = LiveManager(settings, app.state.db, app.state.events, app.state.ingest)
 
     def token_ok(supplied: str | None) -> bool:
         if not settings.token or supplied is None:
@@ -121,5 +125,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exports.router)
     app.include_router(analysis.router)
     app.include_router(captions.router)
+    app.include_router(live.router)
     app.include_router(ui.router)
     return app
